@@ -1,0 +1,7 @@
+# The source archive: the package (found by setuptools), README.md, LICENSE, and the tests with what they need, which
+# include the package folders' READMEs (tests/test_package.py). The wheel takes none of these (include-package-data).
+recursive-include src/contextattr README.md
+graft tests
+graft examples
+prune examples/runs
+global-exclude __pycache__ *.py[cod] *.sqlite

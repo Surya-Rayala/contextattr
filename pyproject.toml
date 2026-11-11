@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=77"]   # 77: the licence as an SPDX expression (PEP 639)
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "contextattr"
+version = "0.1.0"
+description = "Context attribution: which parts of a prompt make a model give an output, for a model hosted anywhere"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Surya Rayala" }]
+keywords = ["context attribution", "explainability", "interpretability", "LLM", "feature interactions",
+            "Shapley values", "SPEX"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Tested on 3.12, 3.13 and 3.14, from a fresh install each (log, 2026-11-10); design §5 aims at 3.11, not yet tried.
+requires-python = ">=3.12"
+# Both floors are tested (log, 2026-11-10). scikit-learn 1.9 is the first whose RidgeCV fits exactly: before it, the
+# terms of a noise-free fit were off by up to 0.2 (Faith-Banzhaf's default fit, methods/interactions.py).
+dependencies = ["numpy>=1.26", "scikit-learn>=1.9"]
+
+[project.urls]
+Repository = "https://github.com/Surya-Rayala/contextattr-"
+Documentation = "https://github.com/Surya-Rayala/contextattr-/tree/main/docs"
+Issues = "https://github.com/Surya-Rayala/contextattr-/issues"
+
+[project.scripts]
+contextattr = "contextattr.cli:main"
+
+[project.optional-dependencies]
+# The SPEX adapter reaches into shapiq's and sparse-transform's internals (methods/interactions.py), so both stay in
+# the series tested (shapiq 1.8.0, sparse-transform 0.2.1) until a newer one is checked.
+interactions = ["shapiq[sparse]>=1.8,<1.9", "sparse-transform>=0.2.1,<0.3", "lightgbm>=4"]
+test = ["pytest>=8", "hypothesis>=6.100"]
+
+[tool.setuptools]
+include-package-data = false     # the wheel holds the code only; MANIFEST.in adds the rest to the source archive
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["gpu: needs a GPU",
+           "shapiq: runs shapiq, slow to import; only with CA_TEST_SHAPIQ=1"]

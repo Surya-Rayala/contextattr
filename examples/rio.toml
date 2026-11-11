@@ -1,0 +1,9 @@
+# The command line on the Rio example (examples/README.md):  python -m contextattr run examples/rio.toml
+prompts = "rio.jsonl"
+out = "runs/rio"
+[model]
+use = "contextattr:ToyModel.demo"   # your own: "my_wrappers.py:MyModel", with args = { ... }
+[run]
+method = "kernelshap"
+budget = 8
+removal = [1]
