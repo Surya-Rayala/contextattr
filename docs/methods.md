@@ -1,69 +1,106 @@
-# Methods: which to use, their settings, and reading a result
+# Methods and settings
 
-A method decides which copies of the prompt to ask the model about, each with some units removed (a *mask*), and fits a small model of the answers, the *surrogate*. The surrogate's terms are the scores. `budget` is the number of masks, and so of model calls, per prompt. Every result is then checked on `test_masks` other masks: R² near 1 means the surrogate predicts the model well, and R² near 0 or below means its scores should not be trusted (SPEX eq. 7).
+Which method to use, how many masks to give it, and what every setting means. [results.md](results.md) shows the output of each method on one example and how to read it.
 
-## Which method
+Words used here (`ca` is the package: `import contextattr as ca`):
+
+| Word | Meaning |
+|---|---|
+| unit | a part of the prompt that may be removed. `n` is the number of units in a prompt |
+| mask | one choice of units to keep. The model is asked about the prompt with only those units |
+| value | the number read from the model for one mask. The *target* decides which number ([interface.md](interface.md) §5) |
+| method | decides which masks to ask about, and works out the scores from their values |
+| budget | the number of masks a method may use for one prompt. Each mask costs model calls, so the budget is the cost |
+| R² | how well the scores predict the value on masks the method did not use: 1 is perfect, 0 or below means the scores should not be trusted |
+
+## 1. Which method
 
 | `method=` | Gives | Masks it needs | Use it for | Install |
 |---|---|---|---|---|
-| `loo` | each unit's effect when it alone is removed | n + 1 | a first look at a short prompt | core |
-| `contextcite` (the default) | one score per unit, most of them zero: ContextCite's sparse linear fit | 32–256 | long prompts cut into sentences or documents | core |
-| `banzhaf` | Banzhaf values | 64 or more | with `lime`, the most faithful one-score-per-unit method in SPEX's tests (B.5.1) | core |
-| `lime` | LIME's locally weighted linear fit | 64 or more | as `banzhaf` | core |
-| `kernelshap` | Shapley values | 64 or more; exact from 2ⁿ | the most used score, though less faithful as prompts grow (B.5.1) | core |
-| `faithbanzhaf`, `faithshap` | every interaction up to an order, 2 unless set | a few times the number of terms, which grows as nᵈ | prompts below about 64 units | `[interactions]` |
-| `spex` | the few interactions that matter, up to order 5 unless set | thousands: see below | prompts of tens to about 2,000 units | `[interactions]` |
-| `proxyspex` | the same, read from a tree model fitted to the answers | about a tenth of SPEX's | models whose every call is costly | `[interactions]` |
+| `"loo"` | each unit's effect when it alone is removed | n + 1, always | a first look at a short prompt | core |
+| `"contextcite"` (the default) | one score per unit, most of them exactly zero | 32 to 256 | long prompts cut into sentences or documents | core |
+| `"banzhaf"` | one score per unit: its average effect | 64 or more | with `lime`, the most faithful one-score-per-unit method in SPEX's tests (B.5.1) | core |
+| `"lime"` | one score per unit, weighted towards masks near the full prompt | 64 or more | as `banzhaf` | core |
+| `"kernelshap"` | one score per unit: its Shapley value | 64 or more | the most widely used score, though less faithful as prompts grow (B.5.1) | core |
+| `"faithbanzhaf"`, `"faithshap"` | a score per unit and per pair of units | a few times the number of pairs: section 2 | prompts below about 64 units | `[interactions]` |
+| `"spex"` | a score per unit, and the few sets of units that matter together | thousands: section 2 | prompts of tens to about 2,000 units | `[interactions]` |
+| `"proxyspex"` | the same, estimated by a tree model | about a tenth of `spex`'s | models whose every call is costly | `[interactions]` |
 
-SPEX's usual budgets are those of its Table 2 (b = 6): 4,032 masks for up to 11 units, 5,376 up to 36, 6,912 up to 92, 7,872 up to 215, 8,832 up to 466, 9,792 up to 973 and 10,752 up to 1,992. A budget too small for its degree is refused, not run at a lower degree.
+"Core" methods come with `pip install contextattr`. The others need `pip install "contextattr[interactions]"`.
 
-Screen many prompts with `contextcite` at 64 masks, or `loo` for short prompts. Then run `spex` or `proxyspex` on the prompts worth a closer look. [interface.md](interface.md) §7 works out the costs.
+A way to work: screen many prompts with `contextcite` at 64 masks, or `loo` for short prompts. Then run `spex` or `proxyspex` on the prompts worth a closer look.
 
-## Settings
+## 2. How many masks: `budget`
 
-`ca.explain(prompt, model, target, method="contextcite", budget=64, ...)` takes:
+More masks give steadier scores and cost more model calls. `ca.explain(..., budget=64)` is the default.
 
-| Setting | Default | What it does |
+| Method | Budget | Notes |
 |---|---|---|
-| `budget` | 64 | masks per prompt for the method |
-| `test_masks` | 128 | held-out masks for R², the same for every method run with the same seed (SPEX used 10,000 per example) |
-| `seed` | 0 | which masks are drawn: the same seed, the same masks |
-| `replace` | none: delete | a removed unit is deleted, or replaced by this text (`"[UNK]"`, as SPEX does) |
-| `noise_repeats` | 3 | how often the full prompt is asked again to measure the noise: scores smaller than it mean nothing |
-| `removal` | none | for example `(1, 2, 3)`: remove the top 1, 2 and 3 units and report how far the value moves (SPEX eq. 8) |
-| `cache` | none | a file that keeps every model answer, so a rerun, or another method on the same masks, costs nothing |
-| `batch_size` | 32 | masked prompts per call of the wrapper |
+| `loo` | not used | always n + 1 masks: the full prompt, and one mask per unit |
+| `contextcite`, `lime` | 2 or more; 32 to 256 is usual | |
+| `banzhaf` | n + 1 or more | exact when the budget covers all 2ⁿ masks (up to 16 units). Refuses masks that leave a score undetermined |
+| `kernelshap` | 2n + 2 or more (or all 2ⁿ masks, when that is fewer) | exact when the budget covers all 2ⁿ masks |
+| `faithbanzhaf`, `faithshap` | a few times the number of scores | with pairs (`max_order=2`) there are 1 + n + n(n − 1)/2 scores: 211 for 20 units, 5,051 for 100 |
+| `spex` | see below | a budget too small for its `degree` is refused with a message, not run at a lower degree |
+| `proxyspex` | about a tenth of `spex`'s | about 500 for 20 units, 800 for 100 |
 
-A method's own settings go through its object, `method=ca.methods.<Name>(...)`. The defaults are the most accurate settings measured:
+The budgets SPEX's authors use (their Table 2, with their setting b = 6), by the number of units:
 
-| Object | Default | The other choice |
+| Units, up to | 11 | 36 | 92 | 215 | 466 | 973 | 1,992 |
+|---|---|---|---|---|---|---|---|
+| Masks | 4,032 | 5,376 | 6,912 | 7,872 | 8,832 | 9,792 | 10,752 |
+
+[interface.md](interface.md) §7 works out what a budget costs in requests.
+
+## 3. Settings of `ca.explain`
+
+```python
+e = ca.explain(prompt, model, target, method="contextcite", budget=64, test_masks=128, seed=0,
+               replace=None, noise_repeats=3, removal=(), cache=None, batch_size=32)
+```
+
+| Setting | Default | What it means |
 |---|---|---|
-| `SPEX(degree=5, chase_depth=None)` | a Chase depth of 2 × degree, the SPEX authors' own: this SPEX then gives what their code (`spectralexplain`) gives on the same masks | `chase_depth=degree`, shapiq's own: R² 0.003–0.070 lower with noise in 8 test functions, and 1–11 s faster per fit |
-| `FaithBanzhaf(max_order=2, ridge=True)` | fitted by cross-validated ridge regression, as SPEX does (B.3); by least squares when every mask was asked, which is then exact | `ridge=False`, least squares always: it overfits as the terms near the masks (R² −0.08 against ridge's 0.79 in a test with noise) |
-| `FaithShap(max_order=2)` | shapiq's weighted least squares | |
-| `ProxySPEX(max_order=5, hpo=True)` | the tree model's settings chosen by cross-validation, shapiq's default | `hpo=False`: LightGBM's own settings, faster |
-| `ContextCite(alpha=0.01, standardize=True)` | a Lasso fit on the values divided by their spread | |
-| `LIME(kernel_width=25.0, alpha=1.0)` | the `lime` library's masks and kernel, with a weighted ridge fit | |
-| `KernelSHAP(paired=True)` | masks drawn in complementary pairs | |
+| `prompt` | | the prompt, a `ca.Prompt` with its units marked ([interface.md](interface.md) §2) |
+| `model` | | your wrapper ([wrapper.md](wrapper.md)) |
+| `target` | `ca.LogProb()` | which number is read from the model for each mask ([interface.md](interface.md) §5). The default explains the prompt's one answer |
+| `method` | `"contextcite"` | a name from section 1, or a method object with its own settings (section 4) |
+| `budget` | 64 | how many masks the method may use (section 2) |
+| `test_masks` | 128 | how many other masks R² is measured on. Each costs as much as a method's mask. They are the same for every method run with the same `seed`, so comparing methods on one prompt asks about them only once when a `cache` is given. 0 skips R² |
+| `seed` | 0 | decides which masks are drawn. The same seed gives the same masks, and so the same result, on every run |
+| `replace` | `None` | what happens to a removed unit. `None` deletes it. A text, such as `"[UNK]"`, is put in its place (SPEX does this) |
+| `noise_repeats` | 3 | how often the full prompt is asked again to measure the noise. Scores smaller than the noise mean nothing. 0 skips it |
+| `removal` | `()` | for example `(1, 2, 3)`: also remove the top 1, 2 and 3 units and report how far the value really moves ([results.md](results.md) §6). One more request for each |
+| `cache` | `None` | a file path. Every answer of the model is kept there, so running again, or running another method on the same prompt, does not ask the model twice |
+| `batch_size` | 32 | how many masked prompts your wrapper gets in one call |
 
-## Reading a result
+Two other ways in take the same settings:
 
-`ca.explain` and `ca.attribute` return an `Explanation`:
+- `ca.explain(prompt, value=f, name="...")` explains any function `f` of masked prompts in place of a model and a target, for example a classifier. `f` gets a list of masked prompts and returns one number for each. `name` is how the result calls it, and what a `cache` stores its answers under.
+- `ca.attribute(f, n, unit_ids=None, ...)` explains any function of masks, for inputs that are not text. `f` gets an array with one row per mask and `n` columns, `True` where a unit is kept, and returns one number per row. `unit_ids` names the columns.
 
-| Use | Gives |
-|---|---|
-| `print(e)`, `e.table()` | a header (method, masks, R², noise, requests), then every unit with its score, highest first, then the strongest interactions |
-| `e.scores` | `{unit id: score}`. A positive score pushes the value up: towards the answer explained, or with `Contrast`, towards the unwanted answers |
-| `e.top(k)` | the k units that push the value up most |
-| `e.interactions`, `e.top_interactions(k)` | `{(unit ids): score}`: what units do together beyond their own scores (interaction methods only) |
-| `e.r2` | the faithfulness: how well the scores predict the model on held-out masks (1 is perfect) |
-| `e.noise` | how much the value moves when the same prompt is asked again: scores below its `std` mean nothing |
-| `e.shapley()`, `e.banzhaf()`, `e.shapley_taylor(order)` | the usual indices, read from any method's result (SPEX App. C) |
-| `e.to_html(path)`, `e.as_dict()` | a page with each unit shaded by its score; a dictionary to save as JSON |
+## 4. Each method's own settings
 
-To confirm a result on the behaviour itself, remove the top units and sample the model again: `ca.intervene(prompt, model, check, [u for u, _ in e.top(3)], samples=64)` gives the share of flagged replies before and after.
+`method="spex"` uses the defaults below. To change one, pass the method as an object: `method=ca.methods.SPEX(degree=3)`. The defaults are the most accurate settings measured.
 
-## How ContextAttr is checked
+| Object | Setting | Default | What it means |
+|---|---|---|---|
+| `LeaveOneOut()` | | | no settings |
+| `Banzhaf()` | | | no settings |
+| `ContextCite(alpha, standardize)` | `alpha` | 0.01 | how strongly scores are pulled to zero. Larger: more scores are exactly zero |
+| | `standardize` | `True` | the values are divided by their spread before the fit, so that `alpha` means the same for every target. `False` fits the raw values, as the ContextCite paper does |
+| `LIME(kernel_width, alpha)` | `kernel_width` | 25.0 | how quickly a mask counts less as it removes more units. Smaller: only masks close to the full prompt count |
+| | `alpha` | 1.0 | how strongly scores are shrunk towards zero. 0: not at all |
+| `KernelSHAP(paired)` | `paired` | `True` | each sampled mask is used together with its opposite, which gives steadier scores |
+| `FaithBanzhaf(max_order, ridge)` | `max_order` | 2 | the largest set of units that gets a score of its own: 2 means single units and pairs |
+| | `ridge` | `True` | the fit is steadied against noise, as SPEX does (B.3). `False` is plain least squares, which goes wrong when there are nearly as many scores as masks (R² −0.08 against 0.79 in a test with noise). When every one of the 2ⁿ masks was asked, the fit is exact either way |
+| `FaithShap(max_order)` | `max_order` | 2 | as for `FaithBanzhaf` |
+| `SPEX(degree, chase_depth)` | `degree` | 5 | the largest set of units that can get a score of its own |
+| | `chase_depth` | `None` | how hard its decoder searches. `None` means 2 × `degree`, the SPEX authors' own setting: this SPEX then gives what their code (`spectralexplain`) gives on the same masks. `chase_depth=degree` is the shapiq library's setting: 1 to 11 s faster per fit, with R² 0.003 to 0.070 lower in 8 tests with noise |
+| `ProxySPEX(max_order, hpo)` | `max_order` | 5 | the largest set of units that can get a score of its own |
+| | `hpo` | `True` | the tree model's own settings are chosen by cross-validation. `False` uses LightGBM's defaults, which is faster |
+
+## 5. How ContextAttr is checked
 
 - Each method is tested against exact answers: closed forms, and values computed over every mask.
 - On a real model (Llama-3.2-3B-Instruct, on one GPU), `check_model` passes every check. On a prompt of 20 documents, every method puts first the document the question is about, with R² 0.81–0.99 on held-out masks.
@@ -75,5 +112,5 @@ To confirm a result on the behaviour itself, remove the top units and sample the
 
 ## References
 
-- SPEX: J. S. Kang, L. Butler, A. Agarwal, Y. E. Erginbas, R. Pedarsani, B. Yu and K. Ramchandran. SPEX: Scaling Feature Interaction Explanations for LLMs. ICML 2025, PMLR 267. https://proceedings.mlr.press/v267/kang25a.html
+- SPEX: J. S. Kang, L. Butler, A. Agarwal, Y. E. Erginbas, R. Pedarsani, B. Yu and K. Ramchandran. SPEX: Scaling Feature Interaction Explanations for LLMs. ICML 2025, PMLR 267. https://proceedings.mlr.press/v267/kang25a.html. "B.3", "B.5.1" and "Table 2" above are its sections and tables.
 - LIME (Ribeiro et al., 2016), KernelSHAP (Lundberg and Lee, 2017), Faith-Banzhaf and Faith-Shap (Tsai et al., 2023), ContextCite (Cohen-Wang et al., 2024) and ProxySPEX (Butler et al., 2025). The interaction methods run through the shapiq library.

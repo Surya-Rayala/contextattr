@@ -34,7 +34,35 @@ e = ca.explain(prompt, model, ca.Contrast(), method="kernelshap", budget=8)
 print(e)
 ```
 
-Each line of the output is one part with its score. `d3`, the sentence about winter, scores highest: it is what pushes the model from the good answer towards the bad one. The first line gives R²: close to 1, the scores describe the model well. `e.to_html("report.html")` shows the prompt with each part shaded by its score.
+It prints:
+
+```
+rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · noise 0 · 22 requests
+  d3              +0.2500  Winter in Brazil runs from June to September.
+  d1              -0.0234  Rio Carnival takes place in February or March.
+  d2              -0.2854  Summer in Brazil runs from December to March.
+```
+
+**What the example says:**
+
+| In the code | Means |
+|---|---|
+| `ca` | the package, under the short name all the docs use |
+| `ca.Prompt("rio", messages=...)` | one prompt, named `rio`, as chat messages |
+| `ca.Unit("d1", "...", sep="\n")` | a part that may be removed, named `d1`. `sep` is text that goes with it, here the line break. Everything else, like the question, always stays |
+| `ca.Response("bad", "...", label="negative")` | an answer the model could give. `negative` marks the answer you do not want, `positive` the one you do |
+| `model` | the wrapper around your model |
+| `ca.Contrast()` | what to explain: how much more likely the model finds the unwanted answers than the wanted ones |
+| `method="kernelshap"`, `budget=8` | how the scores are worked out, and how many copies of the prompt, each with some parts removed, the model is asked about |
+| `e` | the result |
+
+**How to read the output:**
+
+- The first line names the prompt and the method and says how far to trust the result. R² close to 1 means the scores describe the model well; close to 0, do not use them.
+- Then each part with its score, highest first. A positive score pushes the model towards the unwanted answer: `d3`, the sentence about winter, is what makes this model say "cold". A negative score pushes it away: `d2` protects against it. A score near zero means the part hardly matters.
+- `e.scores` gives the scores as a dictionary, and `e.to_html("report.html")` writes a page with each part shaded by its score.
+
+[Reading a result](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/results.md) shows the output of every method on this example and what its scores mean.
 
 ## Use it with your own model
 
@@ -50,7 +78,7 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 
 - **Parts:** mark them with `ca.Unit`, as above, or cut a text automatically: `ca.split(text, "sentence", id="s")` (or `"word"`, `"line"`, `"paragraph"`).
 - **Answer:** `ca.LogProb()` explains one answer. `ca.Contrast()` explains what moves the model from the answers you want to the ones you don't. `ca.Sampled(check)` works when your model can only generate text.
-- **Method:** `contextcite`, the default, takes a quick and cheap look, even at long prompts. `spex` finds parts that matter only together.
+- **Method:** `contextcite`, the default, takes a quick and cheap look, even at long prompts. `spex` finds parts that matter only together. `budget` sets how many copies of the prompt the model is asked about: more is steadier and costs more.
 - **Many prompts:** `contextattr run run.toml` explains a whole file of prompts and writes a report.
 
 ## Learn more
@@ -58,8 +86,9 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 | Document | Covers |
 |---|---|
 | [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/wrapper.md) | connecting your model: what to write, two complete wrappers, the rules, and what to do when the check fails |
-| [docs/interface.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/interface.md) | everything you give and get: the prompt file, answers and labels, what can be explained, settings, costs, runs and the command line |
-| [docs/methods.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/methods.md) | the methods and which to use, their settings, how to read a result, and how ContextAttr is checked |
+| [docs/results.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, and how far to trust them |
+| [docs/methods.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/methods.md) | which method to use, how many masks to give it, and every setting with its default |
+| [docs/interface.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |
 
 ## Licence
 

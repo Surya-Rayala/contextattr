@@ -1,6 +1,6 @@
 # Writing a wrapper
 
-ContextAttr never talks to a model itself. It hands prompts to a small class that you write, the *wrapper*, and your class calls the model: in your own Python process, on your server, or through an API. A wrapper is usually 20 to 50 lines, and `check_model` tells you whether yours is right before you spend anything on a run.
+ContextAttr never talks to a model itself. It hands prompts to a small class that you write, the *wrapper*, and your class calls the model: in your own Python process, on your server, or through an API. A wrapper is usually 20 to 50 lines, and `check_model` tells you whether yours is right before you spend anything on a run. In all the docs, `ca` is the package: `import contextattr as ca`.
 
 ## 1. What a wrapper is
 
@@ -256,4 +256,4 @@ use = "my_wrapper.py:MyModel"
 args = { path = "..." }
 ```
 
-[interface.md](interface.md) describes prompts, targets and runs; [methods.md](methods.md) the methods and how to read a result. To try everything before writing a wrapper, `ca.ToyModel.demo()` is a ready-made stand-in with no model behind it.
+Here `prompt` is a `ca.Prompt` and `e` is the result. [results.md](results.md) shows how to read it, [methods.md](methods.md) covers the methods and every setting, and [interface.md](interface.md) prompts, targets and runs. To try everything before writing a wrapper, `ca.ToyModel.demo()` is a ready-made stand-in with no model behind it.
