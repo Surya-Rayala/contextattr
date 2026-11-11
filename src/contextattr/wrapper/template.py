@@ -10,7 +10,7 @@ model only through an object like this one: a `name`, and `generate`, `score` or
 3. Use it: `ca.explain(prompt, MyModel(), ...)`, or `use = "my_wrapper.py:MyModel"` in a run file.
 
 The guide, with two complete wrappers to copy from:
-https://github.com/Surya-Rayala/contextattr-/blob/main/docs/wrapper.md
+https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md
 """
 
 from contextattr import Sampling, Scored, check_model  # noqa: F401

@@ -31,9 +31,9 @@ requires-python = ">=3.12"
 dependencies = ["numpy>=1.26", "scikit-learn>=1.9"]
 
 [project.urls]
-Repository = "https://github.com/Surya-Rayala/contextattr-"
-Documentation = "https://github.com/Surya-Rayala/contextattr-/tree/main/docs"
-Issues = "https://github.com/Surya-Rayala/contextattr-/issues"
+Repository = "https://github.com/Surya-Rayala/contextattr"
+Documentation = "https://github.com/Surya-Rayala/contextattr/tree/main/docs"
+Issues = "https://github.com/Surya-Rayala/contextattr/issues"
 
 [project.scripts]
 contextattr = "contextattr.cli:main"

@@ -62,11 +62,11 @@ rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · nois
 - Then each part with its score, highest first. A positive score pushes the model towards the unwanted answer: `d3`, the sentence about winter, is what makes this model say "cold". A negative score pushes it away: `d2` protects against it. A score near zero means the part hardly matters.
 - `e.scores` gives the scores as a dictionary, and `e.to_html("report.html")` writes a page with each part shaded by its score.
 
-[Reading a result](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/results.md) shows the output of every method on this example and what its scores mean.
+[Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) shows the output of every method on this example and what its scores mean.
 
 ## Use it with your own model
 
-ContextAttr reaches your model through a small class that you write, a *wrapper*. [Writing a wrapper](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/wrapper.md) is the guide, with two complete wrappers to copy from: one for an API and one for a model you run yourself.
+ContextAttr reaches your model through a small class that you write, a *wrapper*. [Writing a wrapper](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) is the guide, with two complete wrappers to copy from: one for an API and one for a model you run yourself.
 
 1. **Get the file to fill in.** `contextattr template my_wrapper.py` writes it. It needs one or both of:
    - `generate`: writes replies to a prompt. Every model can do this, including the OpenAI, Gemini and Anthropic APIs.
@@ -85,10 +85,10 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 
 | Document | Covers |
 |---|---|
-| [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/wrapper.md) | connecting your model: what to write, two complete wrappers, the rules, and what to do when the check fails |
-| [docs/results.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, and how far to trust them |
-| [docs/methods.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/methods.md) | which method to use, how many masks to give it, and every setting with its default |
-| [docs/interface.md](https://github.com/Surya-Rayala/contextattr-/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |
+| [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) | connecting your model: what to write, two complete wrappers, the rules, and what to do when the check fails |
+| [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, and how far to trust them |
+| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how many masks to give it, and every setting with its default |
+| [docs/interface.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |
 
 ## Licence
 
