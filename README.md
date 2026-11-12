@@ -92,4 +92,4 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 
 ## Licence
 
-MIT: see `LICENSE`.
+ContextAttr is released under the MIT licence: see [LICENSE](https://github.com/Surya-Rayala/contextattr/blob/main/LICENSE).
