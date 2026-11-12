@@ -24,7 +24,7 @@ Words used here (`ca` is the package: `import contextattr as ca`):
 | `"kernelshap"` | one score per unit: its Shapley value | 64 or more | the most widely used score, though less faithful as prompts grow (B.5.1) | core |
 | `"faithbanzhaf"`, `"faithshap"` | a score per unit and per pair of units | a few times the number of pairs: section 2 | prompts below about 64 units | `[interactions]` |
 | `"spex"` | a score per unit, and the few sets of units that matter together | thousands: section 2 | prompts of tens to about 2,000 units | `[interactions]` |
-| `"proxyspex"` | the same, estimated by a tree model | about a tenth of `spex`'s | models whose every call is costly | `[interactions]` |
+| `"proxyspex"` | the same, estimated by a tree model | about a tenth of `spex`'s | prompts of 8 units or more (section 2 says why) on models whose every call is costly | `[interactions]` |
 
 "Core" methods come with `pip install contextattr`. The others need `pip install "contextattr[interactions]"`.
 
@@ -42,13 +42,26 @@ More masks give steadier scores and cost more model calls. `ca.explain(..., budg
 | `kernelshap` | 2n + 2 or more (or all 2ⁿ masks, when that is fewer) | exact when the budget covers all 2ⁿ masks |
 | `faithbanzhaf`, `faithshap` | a few times the number of scores | with pairs (`max_order=2`) there are 1 + n + n(n − 1)/2 scores: 211 for 20 units, 5,051 for 100 |
 | `spex` | see below | a budget too small for its `degree` is refused with a message, not run at a lower degree |
-| `proxyspex` | about a tenth of `spex`'s | about 500 for 20 units, 800 for 100 |
+| `proxyspex` | about a tenth of `spex`'s | about 500 for 20 units, 800 for 100. Not for prompts of fewer than 8 units: see below |
 
 The budgets SPEX's authors use (their Table 2, with their setting b = 6), by the number of units:
 
 | Units, up to | 11 | 36 | 92 | 215 | 466 | 973 | 1,992 |
 |---|---|---|---|---|---|---|---|
 | Masks | 4,032 | 5,376 | 6,912 | 7,872 | 8,832 | 9,792 | 10,752 |
+
+**`proxyspex` needs a prompt of 8 units or more.** It learns a tree model (LightGBM) from the values of the masks and reads the scores off its trees. LightGBM splits a group of masks only if each side keeps at least 20 of them, and a prompt of n units has only 2ⁿ different masks: 32 for 5 units. So a short prompt gives it too little to learn from. Measured on functions with known parts, with every mask asked:
+
+| Units | Different masks | What `proxyspex` finds |
+|---|---|---|
+| 3, 4, 5 | 8, 16, 32 | nothing: every score is zero, and R² is about 0 |
+| 6 | 64 | single units only (R² 0.66 to 0.80): what two units do together is missed or added to their own scores |
+| 7 | 128 | single units and pairs (R² 0.94 to 1.00) |
+| 8 or more | 256 or more | single units, pairs and sets of three: the functions exactly (R² 1.00) |
+
+- A failed fit gives no error: all scores are zero and R² is near 0. Read R² first ([results.md](results.md) §6).
+- For a short prompt use `spex`, `faithbanzhaf` or `faithshap`. Given every mask (`budget=2**n`, where n is the number of units), they are exact.
+- On a long prompt the same rule applies to the budget: a set of k units that matter only together needs about 20 × 2ᵏ masks, which is 160 for sets of three and 320 for sets of four (worked out from the rule above, not measured beyond sets of three).
 
 [interface.md](interface.md) §7 works out what a budget costs in requests.
 
@@ -104,6 +117,7 @@ Two other ways in take the same settings:
 
 - Each method is tested against exact answers: closed forms, and values computed over every mask.
 - On a real model (Llama-3.2-3B-Instruct, on one GPU), `check_model` passes every check. On a prompt of 20 documents, every method puts first the document the question is about, with R² 0.81–0.99 on held-out masks.
+- Where it has been run: on Linux with Python 3.12, 3.13 and 3.14. ContextAttr itself is NumPy and scikit-learn on the CPU and uses no GPU. The model was run on a GPU (Llama-3.2-3B-Instruct, an H100) and on a CPU (Qwen2.5-0.5B-Instruct), each through a wrapper. Not tried: macOS, Windows, Apple MPS, and a real API service (the guide's API wrapper was run against a stand-in for the service).
 - With its default settings, this SPEX gives the same predictions as the SPEX authors' own code (`spectralexplain`) on the same masks: R² 1.0000 between the two in 8 of 8 noisy test functions.
 - Against SPEX's published results, on a small sample (15 reviews, 10 questions, one prompt):
   - Sentiment: R² is within 0.04 of the paper's on reviews of 8–15 words and within 0.15 on longer ones, with the methods in the paper's order.

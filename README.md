@@ -81,13 +81,22 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 - **Method:** `contextcite`, the default, takes a quick and cheap look, even at long prompts. `spex` finds parts that matter only together. `budget` sets how many copies of the prompt the model is asked about: more is steadier and costs more.
 - **Many prompts:** `contextattr run run.toml` explains a whole file of prompts and writes a report.
 
+## Notes for good results
+
+- **Where it runs.** ContextAttr itself needs no GPU: it is NumPy and scikit-learn on the CPU. Your model runs wherever your wrapper puts it: a CPU, a GPU, a server or an API. The calls to the model are nearly all of the cost, so a faster wrapper (a GPU, batches) is what speeds a run up.
+- **Give several answers of each kind.** Label the answers you want `positive` and those you do not want `negative`, two or more of each in different words. Or let the model write them: `ca.sample` adds its own replies, labelled by a check. `ca.Contrast()` averages over each kind, so the scores do not hang on one wording. Each answer adds one request per mask.
+- **Read R² before the scores.** Near 1, the scores describe the model. Near 0, do not use them. A score smaller than the `noise` in the first line means nothing.
+- **Improve the prompt from the scores, then measure again.** A part with a high score pushes the model towards the answers you do not want: rewrite it, move it or remove it. A part with a score below zero protects: keep it. Then check that the change did what the scores said, with `ca.intervene` or by measuring the new prompt. [Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md), section 9, works through an example.
+- **Choose the method by the number of parts.** With up to about 10 parts you can ask about every combination (`budget=2**n` for n parts): `kernelshap` and `banzhaf` are then exact, and `spex` or `faithbanzhaf` also show parts that matter only together. `proxyspex` is for long prompts and needs 8 parts or more. For a long prompt, start with `contextcite`.
+- **Check on many prompts.** One prompt can mislead. Give the parts a `tag`, run a file of prompts, and read the summary by tag: it says which kind of part causes the unwanted answers across all of them.
+
 ## Learn more
 
 | Document | Covers |
 |---|---|
 | [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) | connecting your model: what to write, two complete wrappers, the rules, and what to do when the check fails |
-| [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, and how far to trust them |
-| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how many masks to give it, and every setting with its default |
+| [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, how far to trust them, and how to get from scores to a better prompt |
+| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how many masks to give it, what each method needs, and every setting with its default |
 | [docs/interface.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |
 
 ## Licence

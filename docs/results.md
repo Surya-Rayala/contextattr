@@ -236,7 +236,7 @@ rio-12 · ProxySPEX(max_order=5, hpo=True) · 512 masks · R² 0.992 on 128 test
   d2              -0.2860  Summer in Brazil runs from December to March.
 ```
 
-`proxyspex` needs a prompt of this size or larger: on the three-unit example it has only 8 masks to learn from, finds nothing, and reports all scores as zero with R² −0.008. That is what a failed fit looks like, and why R² is the first thing to read. While it fits, LightGBM prints progress lines of its own; they can be ignored.
+`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §2 says why): on the three-unit example it has only 8 masks to learn from, finds nothing, and reports all scores as zero with R² −0.008. That is what a failed fit looks like, and why R² is the first thing to read. While it fits, LightGBM prints progress lines of its own; they can be ignored.
 
 ## 6. How far to trust a result
 
@@ -308,3 +308,61 @@ ca.intervene(prompt, model, cold, ["d3"], samples=64)
 ```
 
 gives `{"dropped": ["d3"], "before": 0.531, "after": 0.0, "change": -0.531, "se": 0.063, ...}`: 53 % of 64 replies said "cold" with the full prompt and none did without `d3`. `se` is the standard error of the change; a change of several times `se` is real.
+
+## 9. From scores to a better prompt
+
+The scores are for acting on: find the part that pushes the model towards the answers you do not want, change it, and measure again.
+
+**1. Give several answers of each kind.** With one wanted and one unwanted answer, the scores are about those two wordings. With several, `ca.Contrast()` takes the mean over the unwanted answers and the mean over the wanted ones, so the scores say what moves the model between the two kinds of answer. Each answer costs one more request per mask.
+
+```python
+answers = [ca.Response("bad-1", "It is cold, because Carnival is in winter.", label="negative"),
+           ca.Response("bad-2", "Cold: bring a winter coat.", label="negative"),
+           ca.Response("good-1", "It is hot and humid: it is summer in Brazil.", label="positive"),
+           ca.Response("good-2", "Hot, since Carnival falls in the summer.", label="positive")]
+several = ca.Prompt("rio", messages=prompt.messages, responses=answers)
+print(ca.explain(several, model, ca.Contrast(), method="kernelshap", budget=8))
+```
+
+<!-- output: rio-several -->
+```
+rio · KernelSHAP(paired=True) · 8 masks · R² 0.99 on 128 test masks · noise 0 · 44 requests
+  d3              +0.3250  Winter in Brazil runs from June to September.
+  d1              -0.0285  Rio Carnival takes place in February or March.
+  d2              -0.3023  Summer in Brazil runs from December to March.
+```
+
+- You can also let the model write the answers: `ca.sample(prompt, model, ca.Sampling(n=8, temperature=0.7), check)` adds eight of its own replies, each labelled by the check ([interface.md](interface.md) §4).
+- How many answers are enough has not been measured. Use the ones that matter to you, in different words, and see whether the order of the parts stays the same when you add more.
+
+**2. Read which part to change.** R² is 0.99 and the noise is 0, so the scores can be used (section 6). `d3` has the highest score: it pushes this model towards "cold". `d2` has the lowest: it protects against it, so it stays.
+
+**3. Change the prompt and measure again.** Here `d3` is removed; rewriting it or moving it are other changes to try. The value of the whole prompt, before and after:
+
+```python
+better = ca.Prompt("rio-better", messages=[{"role": "user", "content": [
+    ca.Unit("d1", "Rio Carnival takes place in February or March.", sep="\n"),
+    ca.Unit("d2", "Summer in Brazil runs from December to March.", sep="\n"),
+    "Question: What is the weather like during Rio Carnival?"]}], responses=answers)
+before = ca.Value(several, model, ca.Contrast())([[1, 1, 1]])[0]
+after = ca.Value(better, model, ca.Contrast())([[1, 1]])[0]
+print(f"before {before:+.3f}, after {after:+.3f}")
+```
+
+<!-- output: rio-better -->
+```
+before -0.006, after -0.331
+```
+
+The value is how much more likely the model finds the unwanted answers than the wanted ones. It fell from −0.006 to −0.331: the change did what the scores said.
+
+**4. Confirm it on the behaviour.** `ca.intervene(several, model, cold, ["d3"], samples=64)` lets the model answer 64 times with and without `d3` (section 8): 53 % of the replies say "cold" before, and none after.
+
+**5. Do it over many prompts.** One prompt can mislead. Give the parts a `tag` (`"doc"`, `"instruction"`, `"example"`), run a file of prompts, and read the summary by tag ([interface.md](interface.md) §8): it says which kind of part pushes towards the unwanted answers across all of them, and that is the kind to rewrite.
+
+What to keep in mind:
+
+- A score smaller than the noise means nothing, and with R² near 0 no score does.
+- A part with a score near zero can often be dropped, which makes the prompt shorter and cheaper. Check with `removal=` or by measuring the shorter prompt.
+- Parts can matter only together. If R² is low for a method that gives one score per part, use `spex` or `faithbanzhaf` and look at the rows marked `(together)`.
+- A change that helps one prompt can hurt another: measure again on prompts you did not look at.
