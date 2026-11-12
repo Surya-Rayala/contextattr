@@ -2,6 +2,8 @@
 
 ContextAttr never talks to a model itself. It hands prompts to a small class that you write, the *wrapper*, and your class calls the model: in your own Python process, on your server, or through an API. A wrapper is usually 20 to 50 lines, and `check_model` tells you whether yours is right before you spend anything on a run. In all the docs, `ca` is the package: `import contextattr as ca`.
 
+**The short way.** If your model answers through an OpenAI-style API, copy the wrapper of section 5. If it is a Hugging Face model that you run yourself, copy the one of section 6. Put in your model's name, run the file, and it tells you whether it works. The other sections explain what those two wrappers do, for when yours has to differ.
+
 ## 1. What a wrapper is
 
 ```python
@@ -20,7 +22,7 @@ It needs `name` and at least one of the two methods. Which ones you write decide
 | Method | What it does | What you can explain with it | Which models can |
 |---|---|---|---|
 | `generate` | writes replies to a prompt | how often the model behaves in some way: `ca.Sampled(check)` | every model and API |
-| `score` | gives the log-probability of each token of a reply that you supply | why the model gives one answer, or one kind of answer and not another: `ca.LogProb`, `ca.Pooled`, `ca.Contrast`, `ca.Choice` | only backends (the software or service that runs the model) that return log-probabilities of text you give them |
+| `score` | says how likely the model finds a reply that you supply: a log-probability for each of its tokens | why the model gives one answer, or one kind of answer and not another: `ca.LogProb`, `ca.Pooled`, `ca.Contrast`, `ca.Choice` | only backends (the software or service that runs the model) that return log-probabilities of text you give them |
 
 A *log-probability* says how likely the model finds a text: 0 is certain, and the more negative, the less likely. A *token* is the piece of text a model reads at a time, about a word.
 
