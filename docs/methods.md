@@ -1,6 +1,6 @@
 # Methods and settings
 
-Which method to use, how many masks to give it, and what every setting means. [results.md](results.md) shows the output of each method on one example and how to read it.
+Which method to use, how each one works, how many masks to give it, and what every setting means. [results.md](results.md) shows the output of each method on one example and how to read it.
 
 Words used here (`ca` is the package: `import contextattr as ca`):
 
@@ -11,24 +11,27 @@ Words used here (`ca` is the package: `import contextattr as ca`):
 | value | the number read from the model for one mask. The *target* decides which number ([interface.md](interface.md) §5) |
 | method | decides which masks to ask about, and works out the scores from their values |
 | budget | the number of masks a method may use for one prompt. Each mask costs model calls, so the budget is the cost |
-| R² | how well the scores predict the value on masks the method did not use: 1 is perfect, 0 or below means the scores should not be trusted |
+| R² | how well the scores predict the value on masks the method did not use: 1 is perfect, 0 or below means the scores should not be trusted ([results.md](results.md) §6 says what to do then) |
 
-## 1. Which method
+## 1. Which method, and how each works
 
-| `method=` | Gives | Masks it needs | Use it for | Install |
-|---|---|---|---|---|
-| `"loo"` | each unit's effect when it alone is removed | n + 1, always | a first look at a short prompt | core |
-| `"contextcite"` (the default) | one score per unit, most of them exactly zero | 32 to 256 | long prompts cut into sentences or documents | core |
-| `"banzhaf"` | one score per unit: its average effect | 64 or more | with `lime`, the most faithful one-score-per-unit method in SPEX's tests (B.5.1) | core |
-| `"lime"` | one score per unit, weighted towards masks near the full prompt | 64 or more | as `banzhaf` | core |
-| `"kernelshap"` | one score per unit: its Shapley value | 64 or more | the most widely used score, though less faithful as prompts grow (B.5.1) | core |
-| `"faithbanzhaf"`, `"faithshap"` | a score per unit and per pair of units | a few times the number of pairs: section 2 | prompts below about 64 units | `[interactions]` |
-| `"spex"` | a score per unit, and the few sets of units that matter together | thousands: section 2 | prompts of tens to about 2,000 units | `[interactions]` |
-| `"proxyspex"` | the same, estimated by a tree model | about a tenth of `spex`'s | prompts of 8 units or more (section 2 says why) on models whose every call is costly | `[interactions]` |
+Every method asks the model about a set of masks. It then looks for the numbers, the scores, that best reproduce the values it got when the scores of the units kept are added up. The methods differ in which masks they ask about, which masks count more, and whether small scores are set to zero.
 
-"Core" methods come with `pip install contextattr`. The others need `pip install "contextattr[interactions]"`.
+| `method=` | How it works | Use it for |
+|---|---|---|
+| `"loo"` | asks about the full prompt, then about the prompt with one unit removed, for each unit in turn. A unit's score is how far the value falls without it | a first look at a short prompt |
+| `"contextcite"` (the default) | keeps or removes each unit by coin flip in every mask, and sets small scores to exactly zero, so the few units that matter stand out | long prompts cut into sentences or documents |
+| `"banzhaf"` | the same masks, with no score set to zero. A unit's score is its average effect over every combination of the other units | when every unit should get a score |
+| `"lime"` | masks that remove from one unit to all of them. Masks near the full prompt count more, and all scores are shrunk a little | as `banzhaf` |
+| `"kernelshap"` | masks that keep very few or very many units count most, and the scores are made to add up to the full prompt's value minus the empty prompt's. These are Shapley values, the most widely used score | short prompts |
+| `"faithbanzhaf"` | as `banzhaf`, with one more number for every pair of units: what the two do together, beyond their own scores | prompts below about 64 units whose units may matter only together |
+| `"faithshap"` | as `faithbanzhaf`, with the masks weighted as in `kernelshap` | the same |
+| `"spex"` | asks about masks in a pattern taken from error-correcting codes. That lets it work out which few units and sets of units matter without trying every set | prompts of tens to about 2,000 units |
+| `"proxyspex"` | trains a tree model on the values of random masks, and reads the units and sets that matter off its trees | prompts of 8 units or more, on models whose every call is costly |
 
-A way to work: screen many prompts with `contextcite` at 64 masks, or `loo` for short prompts. Then run `spex` or `proxyspex` on the prompts worth a closer look.
+- The first five come with `pip install contextattr`. The last four need `pip install "contextattr[interactions]"`.
+- If unsure: `contextcite` for a first look, `banzhaf` when every unit should get a score, and `spex` (or `faithbanzhaf` on a short prompt) for units that matter only together.
+- In the SPEX paper's tests (its section B.5.1), `banzhaf` and `lime` fit the model best among the methods with one score per unit, and `kernelshap` fits less well as prompts grow.
 
 ## 2. How many masks: `budget`
 
@@ -38,30 +41,21 @@ More masks give steadier scores and cost more model calls. `ca.explain(..., budg
 |---|---|---|
 | `loo` | not used | always n + 1 masks: the full prompt, and one mask per unit |
 | `contextcite`, `lime` | 2 or more; 32 to 256 is usual | |
-| `banzhaf` | n + 1 or more | exact when the budget covers all 2ⁿ masks (up to 16 units). Refuses masks that leave a score undetermined |
+| `banzhaf` | n + 1 or more | exact when the budget covers all 2ⁿ masks (up to 16 units). It raises an error when the masks drawn cannot tell the units apart: give a larger budget |
 | `kernelshap` | 2n + 2 or more (or all 2ⁿ masks, when that is fewer) | exact when the budget covers all 2ⁿ masks |
-| `faithbanzhaf`, `faithshap` | a few times the number of scores | with pairs (`max_order=2`) there are 1 + n + n(n − 1)/2 scores: 211 for 20 units, 5,051 for 100 |
-| `spex` | see below | a budget too small for its `degree` is refused with a message, not run at a lower degree |
-| `proxyspex` | about a tenth of `spex`'s | about 500 for 20 units, 800 for 100. Not for prompts of fewer than 8 units: see below |
+| `faithbanzhaf`, `faithshap` | a few times the number of scores | with pairs (`max_order=2`) there are 1 + n + n(n − 1)/2 scores: 211 for 20 units, 5,051 for 100. Exact with `budget=2**n`, every mask |
+| `spex` | from the table below | the default of 64 is refused, as is any budget too small for its `degree` |
+| `proxyspex` | about a tenth of `spex`'s | about 500 for 20 units, 800 for 100 |
 
-The budgets SPEX's authors use (their Table 2, with their setting b = 6), by the number of units:
+The budgets the SPEX paper uses (its Table 2), by the number of units:
 
 | Units, up to | 11 | 36 | 92 | 215 | 466 | 973 | 1,992 |
 |---|---|---|---|---|---|---|---|
 | Masks | 4,032 | 5,376 | 6,912 | 7,872 | 8,832 | 9,792 | 10,752 |
 
-**`proxyspex` needs a prompt of 8 units or more.** It learns a tree model (LightGBM) from the values of the masks and reads the scores off its trees. LightGBM splits a group of masks only if each side keeps at least 20 of them, and a prompt of n units has only 2ⁿ different masks: 32 for 5 units. So a short prompt gives it too little to learn from. Measured on functions with known parts, with every mask asked:
+For `spex`, pass a budget from this table, such as `budget=4032` for up to 11 units. On a short prompt the same few masks come up again and again and the model is asked about each only once: 4,032 masks of a four-unit prompt cost 16 requests.
 
-| Units | Different masks | What `proxyspex` finds |
-|---|---|---|
-| 3, 4, 5 | 8, 16, 32 | nothing: every score is zero, and R² is about 0 |
-| 6 | 64 | single units only (R² 0.66 to 0.80): what two units do together is missed or added to their own scores |
-| 7 | 128 | single units and pairs (R² 0.94 to 1.00) |
-| 8 or more | 256 or more | single units, pairs and sets of three: the functions exactly (R² 1.00) |
-
-- A failed fit gives no error: all scores are zero and R² is near 0. Read R² first ([results.md](results.md) §6).
-- For a short prompt use `spex`, `faithbanzhaf` or `faithshap`. Given every mask (`budget=2**n`, where n is the number of units), they are exact.
-- On a long prompt the same rule applies to the budget: a set of k units that matter only together needs about 20 × 2ᵏ masks, which is 160 for sets of three and 320 for sets of four (worked out from the rule above, not measured beyond sets of three).
+**`proxyspex` needs a prompt of 8 units or more.** Its tree model (LightGBM) splits a group of masks only when each side keeps at least 20 of them, and a prompt of n units has only 2ⁿ different masks: 32 for 5 units. Measured on functions with known parts: with 3 to 5 units it finds nothing (every score is zero and R² is about 0, with no error); with 6 units, single units only; with 7, pairs too; from 8, sets of three as well. For a shorter prompt use `faithbanzhaf` or `faithshap` with `budget=2**n`, or `spex`.
 
 [interface.md](interface.md) §7 works out what a budget costs in requests.
 
@@ -79,11 +73,11 @@ e = ca.explain(prompt, model, target, method="contextcite", budget=64, test_mask
 | `target` | `ca.LogProb()` | which number is read from the model for each mask ([interface.md](interface.md) §5). The default explains the prompt's one answer |
 | `method` | `"contextcite"` | a name from section 1, or a method object with its own settings (section 4) |
 | `budget` | 64 | how many masks the method may use (section 2) |
-| `test_masks` | 128 | how many other masks R² is measured on. Each costs as much as a method's mask. They are the same for every method run with the same `seed`, so comparing methods on one prompt asks about them only once when a `cache` is given. 0 skips R² |
+| `test_masks` | 128 | how many other masks R² is measured on. Each costs as much as one of the method's masks. 0 skips R² |
 | `seed` | 0 | decides which masks are drawn. The same seed gives the same masks, and so the same result, on every run |
-| `replace` | `None` | what happens to a removed unit. `None` deletes it. A text, such as `"[UNK]"`, is put in its place (SPEX does this) |
+| `replace` | `None` | what happens to a removed unit. `None` deletes it. A text, such as `"[UNK]"`, is put in its place (the SPEX paper does this) |
 | `noise_repeats` | 3 | how often the full prompt is asked again to measure the noise. Scores smaller than the noise mean nothing. 0 skips it |
-| `removal` | `()` | for example `(1, 2, 3)`: also remove the top 1, 2 and 3 units and report how far the value really moves ([results.md](results.md) §6). One more request for each |
+| `removal` | `()` | for example `(1, 2, 3)`: also remove the 1, 2 and 3 units whose removal should change the value most, up or down, and report how far it really moves ([results.md](results.md) §6). One more request for each |
 | `cache` | `None` | a file path. Every answer of the model is kept there, so running again, or running another method on the same prompt, does not ask the model twice |
 | `batch_size` | 32 | how many masked prompts your wrapper gets in one call |
 
@@ -101,28 +95,25 @@ Two other ways in take the same settings:
 | `LeaveOneOut()` | | | no settings |
 | `Banzhaf()` | | | no settings |
 | `ContextCite(alpha, standardize)` | `alpha` | 0.01 | how strongly scores are pulled to zero. Larger: more scores are exactly zero |
-| | `standardize` | `True` | the values are divided by their spread before the fit, so that `alpha` means the same for every target. `False` fits the raw values, as the ContextCite paper does |
+| | `standardize` | `True` | makes `alpha` mean the same for every target, by dividing the values by their spread first. `False` uses the raw values, as the ContextCite paper does |
 | `LIME(kernel_width, alpha)` | `kernel_width` | 25.0 | how quickly a mask counts less as it removes more units. Smaller: only masks close to the full prompt count |
 | | `alpha` | 1.0 | how strongly scores are shrunk towards zero. 0: not at all |
 | `KernelSHAP(paired)` | `paired` | `True` | each sampled mask is used together with its opposite, which gives steadier scores |
 | `FaithBanzhaf(max_order, ridge)` | `max_order` | 2 | the largest set of units that gets a score of its own: 2 means single units and pairs |
-| | `ridge` | `True` | the fit is steadied against noise, as SPEX does (B.3). `False` is plain least squares, which goes wrong when there are nearly as many scores as masks (R² −0.08 against 0.79 in a test with noise). When every one of the 2ⁿ masks was asked, the fit is exact either way |
+| | `ridge` | `True` | keeps the scores steady when there are nearly as many scores as masks, as the SPEX paper does (B.3). Without it, R² was −0.08 against 0.79 in a test with noise |
 | `FaithShap(max_order)` | `max_order` | 2 | as for `FaithBanzhaf` |
 | `SPEX(degree, chase_depth)` | `degree` | 5 | the largest set of units that can get a score of its own |
-| | `chase_depth` | `None` | how hard its decoder searches. `None` means 2 × `degree`, the SPEX authors' own setting: this SPEX then gives what their code (`spectralexplain`) gives on the same masks. `chase_depth=degree` is the shapiq library's setting: 1 to 11 s faster per fit, with R² 0.003 to 0.070 lower in 8 tests with noise |
+| | `chase_depth` | `None` | how hard SPEX searches for sets of units. `None` means 2 × `degree`, the setting of the SPEX authors' own code. `chase_depth=degree` is 1 to 11 s faster per run, with R² 0.003 to 0.070 lower in 8 tests with noise |
 | `ProxySPEX(max_order, hpo)` | `max_order` | 5 | the largest set of units that can get a score of its own |
-| | `hpo` | `True` | the tree model's own settings are chosen by cross-validation. `False` uses LightGBM's defaults, which is faster |
+| | `hpo` | `True` | tries several settings of the tree model and keeps the best. `False` uses LightGBM's defaults, which is faster |
 
 ## 5. How ContextAttr is checked
 
-- Each method is tested against exact answers: closed forms, and values computed over every mask.
-- On a real model (Llama-3.2-3B-Instruct, on one GPU), `check_model` passes every check. On a prompt of 20 documents, every method puts first the document the question is about, with R² 0.81–0.99 on held-out masks.
-- Where it has been run: on Linux with Python 3.12, 3.13 and 3.14. ContextAttr itself is NumPy and scikit-learn on the CPU and uses no GPU. The model was run on a GPU (Llama-3.2-3B-Instruct, an H100) and on a CPU (Qwen2.5-0.5B-Instruct), each through a wrapper. Not tried: macOS, Windows, Apple MPS, and a real API service (the guide's API wrapper was run against a stand-in for the service).
-- With its default settings, this SPEX gives the same predictions as the SPEX authors' own code (`spectralexplain`) on the same masks: R² 1.0000 between the two in 8 of 8 noisy test functions.
-- Against SPEX's published results, on a small sample (15 reviews, 10 questions, one prompt):
-  - Sentiment: R² is within 0.04 of the paper's on reviews of 8–15 words and within 0.15 on longer ones, with the methods in the paper's order.
-  - HotpotQA: the methods are in the paper's order, but every R² is higher (SPEX 0.95–0.98 against 0.60–0.87). The task here follows the paper's description, which the authors' released code does not, so the levels are not comparable.
-  - The trolley prompt: the model is right more often without the last sentence, as in the paper, by a larger margin (21 % to 86 %, against 12 % to 21 %).
+- Each method is tested against exact answers: formulas whose result is known, and values computed over every mask.
+- On a real model (Llama-3.2-3B-Instruct, on one GPU) and a prompt of 20 documents, every method puts first the document the question is about.
+- With its default settings, this SPEX gives the same predictions as the SPEX authors' own code on the same masks (8 of 8 test functions with noise).
+- Against the SPEX paper's published results, on a small sample: the methods come in the paper's order, and R² is within 0.04 of the paper's on short reviews. On HotpotQA every R² is higher than the paper's (SPEX 0.95–0.98 against 0.60–0.87): the task was rebuilt from the paper's description, so those levels are not comparable.
+- Where it has been run: Linux, with Python 3.12, 3.13 and 3.14. ContextAttr itself runs on the CPU and uses no GPU. The model has been run on a GPU (Llama-3.2-3B-Instruct) and on a CPU (Qwen2.5-0.5B-Instruct), each through a wrapper. Not tried: macOS, Windows, Apple MPS, and a real API service.
 
 ## References
 

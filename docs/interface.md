@@ -12,6 +12,8 @@ Everything you give ContextAttr and everything you get back. The other docs: [wr
 | mask (`m`) | one choice of units to keep: one entry per unit, 1 to keep it and 0 to remove it |
 | masked prompt | the prompt with only the units a mask keeps |
 | response | an answer of the model: one you give, or one sampled from the model |
+| token | the piece of text a model reads at a time: about a word, or part of one |
+| log-probability | how likely the model finds a text, on a log scale: 0 is certain, and the more negative, the less likely |
 | label | `positive` for an answer you want, `negative` for one you do not |
 | check | a function that looks at a response and labels it |
 | target | says which number is read from the model for a masked prompt (§5) |
@@ -87,7 +89,7 @@ How `split` cuts:
 | `by` | A unit is |
 |---|---|
 | `"word"` | a run of characters without a space |
-| `"sentence"` | text within one line up to `.`, `!`, `?` or `…` (with any closing quotes or brackets) followed by a space and a character that is not lower case, or up to `。`, `！` or `？`. A period does not end a sentence after an initial (`J.`), a dotted abbreviation (`U.S.`, `e.g.`), a title (`Dr.`, `vs.`, `al.`), `Fig.`, `No.`, `Jan.` and the like before a number, or a list marker at a line's start (`1.`, `a.`) |
+| `"sentence"` | text within one line up to `.`, `!`, `?` or `…` followed by a space and a character that is not lower case, or up to `。`, `！` or `？`. Common abbreviations (`Dr.`, `e.g.`, `U.S.`, `Fig. 2`) and list markers (`1.`) do not end a sentence |
 | `"line"` | a line with text, its indentation included |
 | `"paragraph"` | lines with text between blank lines |
 
@@ -146,12 +148,7 @@ class Model(Protocol):
     def generate(self, prompts: Sequence[Rendered], sampling: Sampling) -> list[list[str]]: ...
 ```
 
-These are the two capabilities of lm-evaluation-harness's model interface (`loglikelihood` and `generate_until`), so anyone who has wrapped a model for it knows the shape.
-
-- `contextattr template my_wrapper.py` writes a wrapper to fill in.
-- `ca.check_model(model)` tests a wrapper before any run: about a dozen calls on a built-in prompt, one line per check, and the targets the wrapper can serve.
-- `ca.ToyModel` is a compatible wrapper with known answers and no real model behind it, for tests and a first try; `ca.ToyModel.demo()` models the Rio example.
-- A wrapper without `score` still supports the sampled target of §5.
+`ca.ToyModel` is a compatible wrapper with known answers and no real model behind it, for tests and a first try.
 
 ## 4. Responses and labels
 
@@ -173,11 +170,11 @@ A *check* labels a response. Three kinds:
 | `ca.checks.reference(contains=True)` | `positive` when it contains the prompt's `reference` (lower case, punctuation and extra spaces ignored), `negative` otherwise. With `contains=False` it must equal the reference |
 | your own function `check(prompt, response)` | returns `"positive"`, `"negative"` or `None`; or `True` (negative) or `False` (positive); or a number, such as a judge model's score; or a `ca.Verdict(label, score, span)` to also say which part of the response matters |
 
-A run records each check by its code and the values it holds, so resuming a run with another check is refused. If your check depends on anything else, such as the version of a judge model, put that into the function's `__name__` and set `check.named = True`.
+A run remembers which check it used, by its code and the values it holds, and refuses to continue with a different one. If your check depends on anything else, such as the version of a judge model, put that into the function's `__name__` and set `check.named = True`.
 
 ## 5. Targets: which number is explained
 
-The target turns the model's answers for one masked prompt into one number, the value. Scores are in the unit of the value.
+The target turns the model's answers for one masked prompt into one number, the value. A score is measured in the same thing as the value.
 
 | Target | The value for one masked prompt | It answers | Needs |
 |---|---|---|---|
@@ -192,7 +189,7 @@ Their settings:
 | Setting | Default | Meaning |
 |---|---|---|
 | `response` (`LogProb`) | `None` | the id of the response to explain. `None` works when the prompt has exactly one |
-| `reduce` | `"mean"` | `"mean"`: log-probability per token, which does not favour short answers. `"sum"`: of the whole answer. `"logodds"`: log(p / (1 − p)) of the whole answer's probability p, as ContextCite uses |
+| `reduce` | `"mean"` | `"mean"`: log-probability per token, which does not favour short answers. `"sum"`: of the whole answer. `"logodds"`: the whole answer's odds, p against 1 − p, on a log scale (only needed to reproduce the ContextCite paper) |
 | `label` (`Pooled`) | `"negative"` | which responses to pool |
 | `samples` (`Sampled`) | 4 | fresh replies per masked prompt. More give less noise and cost more |
 | `sampling` (`Sampled`) | `None` | how the replies are sampled, a `ca.Sampling`. `None` means temperature 0.7, top_p 0.95, up to 256 tokens, seed 0 |
@@ -237,13 +234,8 @@ For example (worked out, not measured): a prompt cut into 100 sentences, with 4 
 Suggestions:
 
 - Cost grows with masks × responses × prompt length. Use sentences or documents as units for long contexts, and words only for short texts.
-- Screen many prompts with `contextcite` at 64 masks (`loo` when n ≤ 20). Run `spex` or `proxyspex` only on the prompts worth a closer look, with a scored target.
-- `Sampled` targets are noisy: the share of k replies has a standard error of √(p(1 − p)/k), which is 0.18 for k = 8 replies and a share p of 0.5. Keep their budgets small, prefer a check that returns a number to a yes/no check, and confirm the result with `ca.intervene` on 64 or more replies.
+- `Sampled` targets are noisy: with 8 replies a share can be off by about 0.18 by chance alone. Keep their budgets small, prefer a check that returns a number to a yes/no check, and confirm the result with `ca.intervene` on 64 or more replies.
 - Every answer of the model is cached in one file per run. An interrupted run continues, another method on the same masks reuses the answers, and nothing is paid for twice.
-- A wrapper for an API should send the prompts of one call concurrently, within the provider's rate limits. One around a model in your own process should batch on its device.
-- In bfloat16, a model in your own process gives a masked prompt a value that shifts a little with the batch it is padded into. For Llama-3.2-3B-Instruct the shift had a standard deviation of 0.022 in the mean log-probability per token, 1.6 % of the spread over masks (measured). The noise repeats ask only about the full prompt, alone, so they do not see it. Where it matters, score the same masks at two batch sizes, or in float32.
-- A vLLM server recomputes the whole prompt for prompt log-probabilities even with prefix caching (its V1 guide), so k responses to one masked prompt cost k passes there.
-- With `replace`, the longest prompt is the one with every unit replaced, which can be longer than the original: check that it still fits your model.
 
 ## 8. Runs: many prompts, and the command line
 

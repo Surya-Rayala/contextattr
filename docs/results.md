@@ -20,15 +20,13 @@ e = ca.explain(prompt, model, ca.Contrast(), method="kernelshap", budget=8)
 print(e)
 ```
 
-| Name | What it is |
-|---|---|
-| `prompt` | the prompt, named `rio`. It has three *units*, `d1`, `d2` and `d3`: the parts that may be removed. The question is plain text, so it always stays |
-| `responses` | two answers the model could give. `bad` is labelled `negative`: the answer we do not want. `good` is labelled `positive` |
-| `model` | the wrapper around your model ([wrapper.md](wrapper.md)). Here it is `ca.ToyModel.demo()`, a stand-in whose behaviour is known exactly |
-| `ca.Contrast()` | the *target*: it says which number is read from the model (section 2) |
-| `method` | how the scores are worked out (section 4) |
-| `budget` | how many masked copies of the prompt the method may ask the model about |
-| `e` | the result, an `Explanation` (section 7) |
+The [README](../README.md) explains each piece of this code. Three words are used from here on:
+
+- a *unit* is a part of the prompt that may be removed: `d1`, `d2` and `d3`;
+- the *target*, here `ca.Contrast()`, says which number is read from the model (section 2);
+- the *budget* is how many masked copies of the prompt the model is asked about.
+
+`model` is `ca.ToyModel.demo()`, a stand-in whose behaviour is known exactly. Yours is the wrapper around your model ([wrapper.md](wrapper.md)).
 
 ## 2. The value: the number every score is about
 
@@ -36,7 +34,7 @@ A *mask* is one choice of which units to keep. For each mask, ContextAttr builds
 
 > the mean log-probability per token of the negative answers, minus that of the positive answers
 
-So a higher value means the model leans more towards the unwanted answer. Three units give 2³ = 8 masks, and these are their values in the example:
+A *log-probability* says how likely the model finds a text: 0 is certain, and the more negative, the less likely. A *token* is the piece of text a model reads at a time, about a word. So a higher value means the model leans more towards the unwanted answer. Three units give 2³ = 8 masks, and these are their values in the example:
 
 | Units kept | Value |
 |---|---|
@@ -55,9 +53,9 @@ Read from the table:
 - `d2` (the summer sentence) lowers it by 0.262: it pushes the model towards "hot".
 - `d1` (Carnival is in February or March) does nothing alone. With `d2` it lowers the value by a further 0.047 (−0.309 against −0.262): the two sentences matter *together*, because only together do they say that Carnival falls in summer.
 
-A score is a summary of this table. A real prompt has far too many masks to ask about all of them (2ⁿ for n units), so each method asks about some and estimates the rest.
+A score is a summary of this table. A real prompt has far too many masks to ask about all of them (2ⁿ for n units), so each method asks about some and estimates the rest. The scores also predict the value of any mask: start from a base number and add the scores of the units kept. R² (section 6) says how close that prediction comes to what the model really gives.
 
-**A score has the unit of the value**, so what a score of +0.25 means depends on the target:
+**A score is measured in the same thing as the value**, so what a score of +0.25 means depends on the target. No fixed size counts as large: compare a score with the noise and with the other scores (section 6).
 
 | Target | The value, and so each score, is in |
 |---|---|
@@ -86,7 +84,7 @@ The first line:
 | `8 masks` | how many masks the method used |
 | `R² 0.991 on 128 test masks` | how well the scores predict the model on 128 other masks. 1 is perfect (section 6) |
 | `noise 0` | how much the value of the full prompt changes when the model is asked again. Scores smaller than this mean nothing (section 6) |
-| `22 requests` | what it cost: each request is one masked prompt with one answer to score. Here 8 different masked prompts × 2 answers, and 6 more to measure the noise |
+| `22 requests` | what it cost: each request is one masked prompt with one answer to score. Here 8 different masked prompts × 2 answers, and 6 more to measure the noise. A mask that comes up twice costs nothing more: the answer is remembered |
 
 Then one row per unit, highest score first: the unit's id, its score, and its text.
 
@@ -98,7 +96,7 @@ Interaction methods add rows marked `(together)` (section 4), and `removal=` add
 
 ## 4. What a score means, method by method
 
-Every method ranks the three units the same way here, but the numbers differ, because each method answers a slightly different question. These are the scores of all the methods on the example:
+Every method ranks the three units the same way here, but the numbers differ, because each method answers a slightly different question. These are the scores of all the methods on the example, each from the call of section 1 with another `method=` (`spex` with `budget=4032`: it needs budgets of its own, [methods.md](methods.md) §2):
 
 | `method=` | `d1` | `d2` | `d3` | `d1` and `d2` together | R² | A unit's score is |
 |---|---|---|---|---|---|---|
@@ -138,7 +136,7 @@ rio · ContextCite(alpha=0.01, standardize=True) · 64 masks · R² 0.991 on 128
   d2              -0.2682  Summer in Brazil runs from December to March.
 ```
 
-These four remove many units at once and fit one number per unit. Read a score as "the value is this much higher, on average, when the unit is there". `kernelshap` weighs the masks so that the scores add up exactly to the value of the full prompt minus the value of the empty one. `contextcite` and `lime` trade a little accuracy in each number for steadier results from few masks, which is why their scores here are slightly smaller than the exact −0.285 and +0.250.
+These four remove many units at once, and then find the one number per unit that, added up over the units kept, comes closest to the values the model gave. Read a score as "the value is this much higher, on average, when the unit is there". `contextcite` and `lime` trade a little accuracy in each number for steadier results from few masks, which is why their scores here are slightly smaller than the exact −0.285 and +0.250.
 
 ### Scores for units and for sets of units: `faithbanzhaf`, `faithshap`, `spex`, `proxyspex`
 
@@ -154,7 +152,7 @@ rio · SPEX(degree=5, chase_depth=10) · 4032 masks · R² 1 on 128 test masks �
 A row marked `(together)` is an *interaction*: what the units add when all of them are in the prompt, beyond their own scores. To get the value these scores predict for any choice of units, add the scores of the units kept and the interactions whose units are all kept. For the full prompt: 0.000 − 0.262 + 0.250 − 0.047 = −0.059, the value in section 2.
 
 - A negative interaction means the units push the value down more together than apart, as here. A positive one means they push it up more together.
-- An interaction that works against the units' own scores means they partly cancel or repeat each other: two sentences that say the same thing each score high, with an interaction of the opposite sign.
+- When two units say the same thing, each scores high alone and their interaction has the opposite sign: together they add less than their two scores suggest.
 - To compare with the one-score-per-unit methods, `e.shapley()` and `e.banzhaf()` fold the interactions back into one number per unit. Here both give `d1` −0.023, `d2` −0.285 and `d3` +0.250, the `kernelshap` scores.
 
 `faithbanzhaf` and `faithshap` score every pair (or every set up to `max_order`), so they print many interactions that are zero; `spex` and `proxyspex` keep only the few that matter.
@@ -236,17 +234,26 @@ rio-12 · ProxySPEX(max_order=5, hpo=True) · 512 masks · R² 0.992 on 128 test
   d2              -0.2860  Summer in Brazil runs from December to March.
 ```
 
-`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §2 says why): on the three-unit example it has only 8 masks to learn from, finds nothing, and reports all scores as zero with R² −0.008. That is what a failed fit looks like, and why R² is the first thing to read. While it fits, LightGBM prints progress lines of its own; they can be ignored.
+`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §2 says why): on the three-unit example it has only 8 masks to learn from, finds nothing, and reports all scores as zero with R² −0.008. That is what a failed run looks like, and why R² is the first thing to read. While it runs, LightGBM prints progress lines of its own; they can be ignored.
 
 ## 6. How far to trust a result
 
 | Look at | It tells you | Rule of thumb |
 |---|---|---|
-| `e.r2` | how well the scores predict the model on masks the method did not use. 1 is perfect; 0 is no better than always guessing the average; below 0 is worse than that | near 1: the scores describe the model well. Near 0 or below: do not use the scores. In between: the order of the top units is more reliable than the size of small scores. Use more masks, or a method with interactions |
+| `e.r2` | how well the scores predict the model on masks the method did not use. 1 is perfect; 0 is no better than always guessing the average; below 0 is worse than that | near 1: use the scores. Near 0 or below: do not. In between: trust the order of the top units more than the size of small scores |
 | `e.noise["std"]` | how much the value of the full prompt moves when the model is asked again. 0 for a model that always answers the same | a score smaller than the noise means nothing |
 | scores of the same size on units that cannot matter | the scatter of the method itself, as `lime` shows in section 5 | only scores that stand clear of the rest mean something |
-| `removal=(1, 2, 3)` | the value is measured again without the top 1, 2 and 3 units | if the value hardly moves, the top units are not what drives it |
+| `removal=(1, 2, 3)` | the value is measured again without the 1, 2 and 3 units whose removal should change it most, up or down | if the value hardly moves, those units are not what drives it |
 | `ca.intervene(...)` | the model generates fresh replies with and without the top units | the final check, on the behaviour itself (section 8) |
+
+**When R² is low.** A real model gives less than this toy example: with Llama-3.2-3B-Instruct on a prompt of 20 documents, R² was between 0.81 and 0.99, depending on the method. Well below that, try these in order:
+
+1. **More masks.** Double `budget` and see whether R² rises. On the 12-sentence prompt of section 5, `lime` has R² 0.49 with 16 masks, 0.95 with 64 and 0.99 with 128.
+2. **A steadier value.** If the noise in the first line is above 0, or the target is `ca.Sampled`, the values themselves are shaky. Raise `samples`, or use a scored target if your wrapper can score.
+3. **A method that scores units together.** With one score per unit, R² stays low when units matter only together. On a real model (Qwen2.5-0.5B-Instruct, the three sentences of section 1), `kernelshap` had R² 0.73 and `spex` 1.00.
+4. **The right method for the size.** `proxyspex` gives all zeros on a prompt of fewer than 8 units ([methods.md](methods.md) §2). `loo` and `lime` often have a lower R² than the others, as in sections 4 and 5, even when their order of the units is right.
+
+If R² stays low, use only the order of the top units, and confirm it with `removal=` or `ca.intervene` before you act on it. `R² n/a` with test masks means that every one of them gave the same value: nothing you marked changes this answer.
 
 With `removal=(1, 2)`, the result ends with:
 
@@ -256,9 +263,7 @@ With `removal=(1, 2)`, the result ends with:
   removing d1, d2: the value moves by +0.3089 (Rem 5.25)
 ```
 
-Each row names the units whose removal changes the result most, and how far the value really moved when the model was asked without them. `Rem` is that change divided by the size of the full prompt's value (SPEX's measure). When the full prompt's value is near zero, as with `Contrast` here, read the change and not `Rem`.
-
-On a real model R² is lower than in this toy example. With Llama-3.2-3B-Instruct on a prompt of 20 documents it was between 0.81 and 0.99, depending on the method.
+Each row names the units whose removal changes the result most, and how far the value really moved when the model was asked without them. `Rem` is that change divided by the size of the full prompt's value (the measure the SPEX paper reports). When the full prompt's value is near zero, as with `Contrast` here, read the change and not `Rem`.
 
 ## 7. Everything a result holds
 
@@ -275,7 +280,7 @@ On a real model R² is lower than in this toy example. With Llama-3.2-3B-Instruc
 | `e.requests` | `{"requests": ..., "reused": ..., "calls": ...}`: requests sent to the model, answers taken from the cache instead, and calls of the wrapper |
 | `e.removal` | the removal rows of section 6, as a list |
 | `e.shapley()`, `e.banzhaf()` | one number per unit from any method's result, interactions folded in |
-| `e.shapley_taylor(order)` | the Shapley-Taylor interaction index of that order |
+| `e.shapley_taylor(order)` | for specialists: the Shapley-Taylor interaction index of that order |
 | `e.to_html(path)` | a page showing the prompt with each unit shaded by its score |
 | `e.as_dict()` | everything above as a dictionary, to save as JSON; `ca.Explanation.from_dict` reads it back |
 
@@ -356,13 +361,11 @@ before -0.006, after -0.331
 
 The value is how much more likely the model finds the unwanted answers than the wanted ones. It fell from −0.006 to −0.331: the change did what the scores said.
 
-**4. Confirm it on the behaviour.** `ca.intervene(several, model, cold, ["d3"], samples=64)` lets the model answer 64 times with and without `d3` (section 8): 53 % of the replies say "cold" before, and none after.
+**4. Confirm it on the behaviour** with `ca.intervene` (section 8): 53 % of the replies say "cold" with `d3`, and none without it.
 
 **5. Do it over many prompts.** One prompt can mislead. Give the parts a `tag` (`"doc"`, `"instruction"`, `"example"`), run a file of prompts, and read the summary by tag ([interface.md](interface.md) §8): it says which kind of part pushes towards the unwanted answers across all of them, and that is the kind to rewrite.
 
-What to keep in mind:
+Two more things:
 
-- A score smaller than the noise means nothing, and with R² near 0 no score does.
-- A part with a score near zero can often be dropped, which makes the prompt shorter and cheaper. Check with `removal=` or by measuring the shorter prompt.
-- Parts can matter only together. If R² is low for a method that gives one score per part, use `spex` or `faithbanzhaf` and look at the rows marked `(together)`.
+- A part with a score near zero can often be dropped, which makes the prompt shorter and cheaper. Measure the shorter prompt to check.
 - A change that helps one prompt can hurt another: measure again on prompts you did not look at.

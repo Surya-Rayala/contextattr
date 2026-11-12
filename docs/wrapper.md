@@ -15,12 +15,14 @@ class MyModel:
         ...
 ```
 
-It needs `name` and at least one of the two methods. Which ones you write decides what you can explain:
+It needs `name` and at least one of the two methods. Which ones you write decides what you can explain (the *target*: [interface.md](interface.md) §5):
 
 | Method | What it does | What you can explain with it | Which models can |
 |---|---|---|---|
 | `generate` | writes replies to a prompt | how often the model behaves in some way: `ca.Sampled(check)` | every model and API |
-| `score` | gives the log-probability of each token of a reply that you supply | why the model gives one answer, or one kind of answer and not another: `ca.LogProb`, `ca.Pooled`, `ca.Contrast`, `ca.Choice` | only backends that return log-probabilities of text you give them |
+| `score` | gives the log-probability of each token of a reply that you supply | why the model gives one answer, or one kind of answer and not another: `ca.LogProb`, `ca.Pooled`, `ca.Contrast`, `ca.Choice` | only backends (the software or service that runs the model) that return log-probabilities of text you give them |
+
+A *log-probability* says how likely the model finds a text: 0 is certain, and the more negative, the less likely. A *token* is the piece of text a model reads at a time, about a word.
 
 Write `score` if your backend can do it: it costs one pass over the prompt with nothing generated, and it gives the same number every time. Write both where you can: `generate` also gives you the model's own answers to explain (`ca.sample`).
 
@@ -29,7 +31,7 @@ Write `score` if your backend can do it: it costs one pass over the prompt with 
 | Where the model runs | `generate` | `score` |
 |---|---|---|
 | in your own process: transformers or any framework, on a GPU, a CPU or Apple MPS | yes | yes |
-| a vLLM server | yes | yes: `prompt_logprobs` on its chat and completions endpoints |
+| a vLLM server | yes | yes: `prompt_logprobs` on its chat and completions endpoints. Each response to a prompt costs a full pass over it, even with prefix caching |
 | an SGLang server | yes | yes: `return_logprob` with `logprob_start_len` inside the prompt (the default gives generated tokens only) |
 | AWS Bedrock, a model brought in with Custom Model Import | yes | yes: `InvokeModel` with `return_logprobs` returns the prompt's log-probabilities |
 | AWS Bedrock's own models through `Converse` | yes | no: the API has no log-probability field |
@@ -91,8 +93,8 @@ The prompts are already masked: ContextAttr has removed the parts it is testing.
 | Field | Default | Meaning |
 |---|---|---|
 | `n` | 1 | replies per prompt |
-| `temperature` | 0.0 | 0 means greedy: always the most likely token |
-| `top_p` | 1.0 | nucleus sampling |
+| `temperature` | 0.0 | how random the replies are. 0 always picks the most likely next token (called greedy); higher gives more varied replies |
+| `top_p` | 1.0 | sample only among the most likely tokens that together have this probability. 1.0 means all of them |
 | `max_tokens` | 256 | the longest reply |
 | `seed` | 0 | the same seed should give the same replies; `None` means no seed |
 | `stop` | `()` | strings that end a reply; the reply does not include them |
@@ -103,7 +105,12 @@ The prompts are already masked: ContextAttr has removed the parts it is testing.
 [ca.Scored(logprobs=[-0.21, -1.35, -0.08])]
 ```
 
-Each number is the natural-log probability the model gives that token of the response, given the prompt and the response's earlier tokens. To get them: format the prompt as your model expects, put the response where the model's reply would begin, run the model once, and read off the probability of each response token. Nothing is generated. Leave out the end-of-turn token that a chat template adds after a reply.
+Each number is the natural-log probability the model gives that token of the response, given the prompt and the response's earlier tokens. To get them:
+
+1. Format the prompt as your model expects. A chat model wants each message wrapped in its own marker tokens: its *chat template*.
+2. Put the response where the model's reply would begin.
+3. Run the model once and read off the probability of each response token. Nothing is generated.
+4. Do not count the marker that closes the reply (the end-of-turn token).
 
 Optional: `ca.Scored(logprobs, tokens)` also carries the text of each token. The texts must join back to the response exactly. With them, a target can cover only part of a response (a `span`).
 
@@ -206,6 +213,7 @@ if __name__ == "__main__":
 ```
 
 - **Speed.** `score` is where a run spends its time. To go faster, score a batch of prompts in one pass (pad on the left, so that every response ends at the last position) and load the model in a lower precision, for example `LocalModel(path, device="cuda", dtype=torch.bfloat16)` (`torch_dtype` in older versions of transformers).
+- **Precision and batches.** In bfloat16, the value of a masked prompt shifts a little with the batch it is padded into: for Llama-3.2-3B-Instruct by 0.022 in the mean log-probability per token, 1.6 % of the spread over masks (measured). Where that matters, score in float32.
 - **The model's own generation settings.** `model.generate` also applies whatever the model's `generation_config` sets, such as a repetition penalty. Replace that config if you want only `sampling` to decide.
 - **Prompts that change by the day.** Llama 3's chat template writes today's date into every prompt. Pass a fixed `date_string="..."` to `apply_chat_template`, or cached answers from yesterday no longer match today's prompts.
 
