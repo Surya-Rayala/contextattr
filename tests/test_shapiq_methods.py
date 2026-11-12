@@ -111,6 +111,21 @@ def test_proxyspex_comes_close():
     assert e.r2 > 0.95
 
 
+def test_proxyspex_by_the_number_of_units_and_without_a_word_from_lightgbm(capfd):
+    """What docs/methods.md §2 says ProxySPEX finds: single units from 64 masks, pairs from 128, sets of three from
+    256 (measured 2026-11-12). LightGBM printed tens of thousands of progress lines; with verbosity −1 it prints
+    none, and these are the numbers measured before that change."""
+    def f(masks):
+        return 2.0 * masks[:, 0] + 3.0 * (masks[:, 1] & masks[:, 2]) + 4.0 * (masks[:, 3] & masks[:, 4] & masks[:, 5])
+
+    found = {n: ca.attribute(f, n, method="proxyspex", budget=4096, test_masks=256).surrogate for n in (6, 7, 8)}
+    printed = capfd.readouterr()
+    assert "LightGBM" not in printed.out + printed.err
+    parts = {n: (round(float(s.scores[0]), 3), round(s.interactions.get((1, 2), 0.0), 3),
+                 round(s.interactions.get((3, 4, 5), 0.0), 3)) for n, s in found.items()}
+    assert parts == {6: (1.954, 0.0, 0.0), 7: (1.996, 2.993, 0.0), 8: (2.0, 3.0, 4.0)}
+
+
 def test_indices_equal_shapiq_s_exact_ones():
     import shapiq
 

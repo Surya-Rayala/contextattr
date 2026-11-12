@@ -148,7 +148,7 @@ class Model(Protocol):
     def generate(self, prompts: Sequence[Rendered], sampling: Sampling) -> list[list[str]]: ...
 ```
 
-`ca.ToyModel` is a compatible wrapper with known answers and no real model behind it, for tests and a first try.
+`ca.ToyModel` is a compatible wrapper that follows fixed rules: known answers, no model and no weights behind it. It is for tests and a first try.
 
 ## 4. Responses and labels
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import itertools
 import random
+import warnings
 from contextlib import contextmanager
 
 import numpy as np
@@ -164,13 +165,34 @@ class ProxySPEX(ShapiqMethod):
     process may use CPUs, whatever OMP_NUM_THREADS says (LOKY_MAX_CPU_COUNT limits it)."""
 
     name = "proxyspex"
+    least_masks = 40   # LightGBM keeps at least 20 masks on each side of a split: from fewer than 40 it learns nothing
 
     def __init__(self, max_order: int = 5, hpo: bool = True):
         super().__init__(max_order=max_order)
         self.hpo = bool(hpo)
 
+    def run(self, game, n: int, budget: int, rng: np.random.Generator) -> tuple[Surrogate, int]:
+        """Refuses, before anything is asked, masks its trees cannot split: they would give every score as zero
+        with R² near 0 and no error (measured 2026-11-12: so for 3 to 5 units, whose 8 to 32 masks are all there are;
+        single units only from 64 masks, pairs from 128, sets of three from 256)."""
+        check_budget(self.name, budget, 2)
+        if n < 60 and 2 ** n < self.least_masks:
+            raise ValueError(f"proxyspex cannot learn from a prompt of {n} units: they have only {2 ** n} different "
+                             f"masks, and its tree model needs {self.least_masks} or more (8 units or more to find "
+                             f"sets of three). Use spex, or faithbanzhaf or faithshap with budget=2**n")
+        if budget < self.least_masks:
+            raise ValueError(f"proxyspex needs a budget of at least {self.least_masks} masks for its tree model to "
+                             f"learn anything, not {budget} (about 500 for 20 units)")
+        with warnings.catch_warnings():     # shapiq's remark that a short prompt has fewer masks than the budget
+            warnings.filterwarnings("ignore", message="Not all budget is required")
+            return super().run(game, n, budget, rng)
+
     def make(self, shapiq, n, seed):
-        return shapiq.ProxySPEX(n=n, max_order=self.max_order, index="FBII", hpo=self.hpo, random_state=seed)
+        approximator = shapiq.ProxySPEX(n=n, max_order=self.max_order, index="FBII", hpo=self.hpo, random_state=seed)
+        model = getattr(approximator.proxy_model, "estimator", approximator.proxy_model)   # the grid search's own
+        if type(model).__module__.split(".")[0] == "lightgbm":
+            model.set_params(verbosity=-1)   # it printed tens of thousands of progress lines; the fit is the same
+        return approximator
 
     def __repr__(self) -> str:
         return f"ProxySPEX(max_order={self.max_order}, hpo={self.hpo})"

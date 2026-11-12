@@ -7,7 +7,9 @@ model only through an object like this one: a `name`, and `generate`, `score` or
                 log-probabilities of given text: a model in your own process, a vLLM or SGLang server. Serves
                 LogProb, Pooled, Contrast and Choice, which are cheaper and repeat exactly: write it if you can.
 2. Run this file: `python my_wrapper.py`. check_model calls your wrapper about a dozen times and says what is wrong.
-3. Use it: `ca.explain(prompt, MyModel(), ...)`, or `use = "my_wrapper.py:MyModel"` in a run file.
+3. Check the results: `contextattr demo my_wrapper.py:MyModel` explains three prompts with planted facts, where the
+   right result is known, and says whether your model's results agree.
+4. Use it: `ca.explain(prompt, MyModel(), ...)`, or `use = "my_wrapper.py:MyModel"` in a run file.
 
 The guide, with two complete wrappers to copy from:
 https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md

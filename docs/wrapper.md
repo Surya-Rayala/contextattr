@@ -41,11 +41,15 @@ Write `score` if your backend can do it: it costs one pass over the prompt with 
 
 As found on 2026-11-05, from each service's documentation (for Gemini and Anthropic, from their client libraries and users' reports). Services change, so check yours.
 
-## 3. Three steps
+## 3. The steps
 
 1. **Get the file to fill in.** `contextattr template my_wrapper.py` writes it.
 2. **Fill it in.** Sections 4 to 6 show what goes in each method, with two complete wrappers to copy from.
-3. **Check it.** `python my_wrapper.py` runs `ca.check_model` on your wrapper: about a dozen small calls on a built-in prompt. It prints one line per check. For example, for Llama-3.2-3B-Instruct on one GPU:
+3. **Check the wrapper** (below).
+4. **Check the results.** `contextattr demo my_wrapper.py:MyModel` explains three prompts with planted facts, where the right result is known (section 10).
+5. **Use it** (section 9).
+
+**Checking the wrapper.** `python my_wrapper.py` runs `ca.check_model` on your wrapper: about a dozen small calls on a built-in prompt. It prints one line per check. For example, for Llama-3.2-3B-Instruct on one GPU:
 
 ```
 check_model: my-model
@@ -264,4 +268,45 @@ use = "my_wrapper.py:MyModel"
 args = { path = "..." }
 ```
 
-Here `prompt` is a `ca.Prompt` and `e` is the result. [results.md](results.md) shows how to read it, [methods.md](methods.md) covers the methods and every setting, and [interface.md](interface.md) prompts, targets and runs. To try everything before writing a wrapper, `ca.ToyModel.demo()` is a ready-made stand-in with no model behind it.
+Here `prompt` is a `ca.Prompt` and `e` is the result. [results.md](results.md) shows how to read it, [methods.md](methods.md) covers the methods and every setting, and [interface.md](interface.md) prompts, targets and runs. To try everything before writing a wrapper, `ca.ToyModel.demo()` is a ready-made stand-in: fixed rules written for the docs' example, with no model behind it.
+
+## 10. Check the results with planted facts
+
+`check_model` tells you that the wrapper answers in the right form. It cannot tell you whether the results are right with your model. The demonstration can: it explains three prompts whose facts are invented, so the right result is known before the model is asked.
+
+```bash
+contextattr demo                          # the built-in stand-in: no model, about a minute
+contextattr demo my_wrapper.py:MyModel    # your wrapper
+```
+
+A wrapper that takes arguments is run from Python:
+
+```python
+import torch
+import contextattr as ca
+from my_model import LocalModel               # the wrapper of section 6, saved as my_model.py
+
+ca.demo(LocalModel("Qwen/Qwen2.5-0.5B-Instruct", dtype=torch.float32), cache="demo.sqlite")
+```
+
+**What it asks of the model.** Three cases of 8 documents each. A wrapper that scores is asked about every combination of the documents: 1,024 prompts to score (seconds on a GPU, minutes on a CPU), and five short replies if it can also generate. A wrapper that can only generate gets the first case alone, by counting replies: about 80 short ones. With `cache=`, a second run asks nothing.
+
+**What you should see, and why:**
+
+| Case | What is planted | What you should see | Why |
+|---|---|---|---|
+| 1. One document holds the answer | only `d2` says that the bridge was opened in 1932 | `d2` comes first for every method, far above the others, and without `d2` the model's answer changes | the year is invented, so the model can have it only from `d2` |
+| 2. Two documents hold the answer together | `d2` ties the festival to the fair, and `d3` gives the fair's month | `d2` and `d3` are the two top documents, and the pair has a term of its own | neither sentence answers the question alone |
+| 3. A later document overrules an earlier one | `d2`: 310 metres when built. `d4`: 450 metres now | `d4` has the highest score and `d2` the lowest, for the value log p("450") − log p("310"). The model says 450 with `d4` and 310 without it | each number stands in one document only |
+
+**The lines under each table:**
+
+| A line starts with | It means | What to do |
+|---|---|---|
+| `ok` | as it should be | |
+| `FAIL` | a check of the package itself failed. These checks compare the scores with brute force over every combination of the documents, a pair's term with its direct measurement, and a second run with the cache. They hold whatever the model says | report it, with the output |
+| `note` | your model read the documents in another way than planted | nothing is wrong: the line says what the model did |
+
+**The stand-in is not a model.** Without a wrapper, the demonstration uses fixed rules written for these three prompts. There is no neural network behind it, no weights, and nothing random, so every line says `ok` by construction. It shows that the package is installed and works, and what the output looks like. It says nothing about any real model.
+
+**On a real model** (Qwen2.5-0.5B-Instruct on a CPU, measured): every check of the package passes. Cases 1 and 3 come out as planted for all nine methods, with R² from 0.72 (`lime`) to 1.00 in case 1. Case 2 gets one `note`: this small model says "October" from `d3` alone, so the two documents overlap instead of needing each other, and the methods give the pair the term that was measured directly (−0.506). A model that cannot read at all, such as a test model with random weights, gets a `note` in every case and still passes every check of the package.

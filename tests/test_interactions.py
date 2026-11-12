@@ -264,6 +264,24 @@ def test_from_interaction_values_and_method_names():
         FaithBanzhaf(max_order=0)
 
 
+def test_proxyspex_refuses_masks_its_trees_cannot_learn_from():
+    """Found 2026-11-12: on 3 to 5 units (8 to 32 masks) ProxySPEX gave every score as zero with R² near 0 and no
+    error, because LightGBM keeps at least 20 masks on each side of a split. It now refuses before anything is asked
+    (and before shapiq is imported, so this test is quick)."""
+    asked = []
+
+    def f(masks):
+        asked.append(len(masks))
+        return masks[:, 0].astype(float)
+
+    for n in (3, 4, 5):
+        with pytest.raises(ValueError, match=f"only {2 ** n} different masks"):
+            ca.attribute(f, n, method="proxyspex", budget=512)
+    with pytest.raises(ValueError, match="a budget of at least 40 masks"):
+        ca.attribute(f, 12, method="proxyspex", budget=39)
+    assert asked == [] and ca.methods.ProxySPEX.least_masks == 40
+
+
 def test_interaction_surrogates_predict_products():
     s = Surrogate(intercept=1.0, scores=np.array([0.0, 0.0, 0.0]), interactions={(0, 2): 2.0, (0, 1, 2): -1.0})
     m = np.array(list(itertools.product([0, 1], repeat=3)))

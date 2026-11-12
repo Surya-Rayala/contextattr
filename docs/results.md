@@ -26,7 +26,7 @@ The [README](../README.md) explains each piece of this code. Three words are use
 - the *target*, here `ca.Contrast()`, says which number is read from the model (section 2);
 - the *budget* is how many masked copies of the prompt the model is asked about.
 
-`model` is `ca.ToyModel.demo()`, a stand-in whose behaviour is known exactly. Yours is the wrapper around your model ([wrapper.md](wrapper.md)).
+`model` is `ca.ToyModel.demo()`, a stand-in that follows fixed rules written for this example. It is not a language model: its numbers show how to read a result, not how any real model behaves. Yours is the wrapper around your model ([wrapper.md](wrapper.md)).
 
 ## 2. The value: the number every score is about
 
@@ -234,7 +234,7 @@ rio-12 · ProxySPEX(max_order=5, hpo=True) · 512 masks · R² 0.992 on 128 test
   d2              -0.2860  Summer in Brazil runs from December to March.
 ```
 
-`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §2 says why): on the three-unit example it has only 8 masks to learn from, finds nothing, and reports all scores as zero with R² −0.008. That is what a failed run looks like, and why R² is the first thing to read. While it runs, LightGBM prints progress lines of its own; they can be ignored.
+`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §2 says why). It refuses the three-unit example, which has only 8 masks for it to learn from.
 
 ## 6. How far to trust a result
 
@@ -251,7 +251,7 @@ rio-12 · ProxySPEX(max_order=5, hpo=True) · 512 masks · R² 0.992 on 128 test
 1. **More masks.** Double `budget` and see whether R² rises. On the 12-sentence prompt of section 5, `lime` has R² 0.49 with 16 masks, 0.95 with 64 and 0.99 with 128.
 2. **A steadier value.** If the noise in the first line is above 0, or the target is `ca.Sampled`, the values themselves are shaky. Raise `samples`, or use a scored target if your wrapper can score.
 3. **A method that scores units together.** With one score per unit, R² stays low when units matter only together. On a real model (Qwen2.5-0.5B-Instruct, the three sentences of section 1), `kernelshap` had R² 0.73 and `spex` 1.00.
-4. **The right method for the size.** `proxyspex` gives all zeros on a prompt of fewer than 8 units ([methods.md](methods.md) §2). `loo` and `lime` often have a lower R² than the others, as in sections 4 and 5, even when their order of the units is right.
+4. **The right method for the size.** `proxyspex` needs 8 units or more: with 6 or 7 it finds less than is there ([methods.md](methods.md) §2). `loo` and `lime` often have a lower R² than the others, as in sections 4 and 5, even when their order of the units is right.
 
 If R² stays low, use only the order of the top units, and confirm it with `removal=` or `ca.intervene` before you act on it. `R² n/a` with test masks means that every one of them gave the same value: nothing you marked changes this answer.
 

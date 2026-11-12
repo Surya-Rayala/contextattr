@@ -16,7 +16,7 @@ Add `[interactions]` (`pip install "contextattr[interactions]"`) for SPEX and th
 
 ## Try it
 
-This runs anywhere in seconds: `ToyModel` stands in for a real model.
+This runs anywhere in seconds. `ToyModel` stands in for a real model: it follows a few fixed rules written for this example, so its results are known in advance. It is not a language model.
 
 ```python
 import contextattr as ca
@@ -72,7 +72,8 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
    - `generate`: writes replies to a prompt. Every model can do this, including the OpenAI, Gemini and Anthropic APIs.
    - `score`: says how likely the model finds an answer you give it (a log-probability for each token, the pieces of text a model reads). Possible when you run the model yourself, in your own code or on a vLLM or SGLang server.
 2. **Check it.** `python my_wrapper.py` runs `ca.check_model` on it and says what, if anything, is wrong.
-3. **Use it.** Put your wrapper where the example has `model`.
+3. **Check the results.** `contextattr demo my_wrapper.py:MyModel` explains three prompts with planted facts, where the right result is known, and says whether your model's results agree. `contextattr demo` alone shows it on the stand-in.
+4. **Use it.** Put your wrapper where the example has `model`.
 
 ## Choose what to explain, and how
 

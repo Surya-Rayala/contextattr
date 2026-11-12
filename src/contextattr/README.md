@@ -15,5 +15,6 @@ One folder or file per role. The package reaches a model only through a wrapper 
 | `result.py` | `Explanation`: the scores, R², noise and costs; `top`, `table`, `as_dict`, `from_dict`, `to_html`; Shapley, Banzhaf and Shapley-Taylor read from its surrogate |
 | `run.py` | `explain` (a prompt through a model and a target, or a function of masked prompts), `attribute` (any function of masks), and `Run` (a prompt file: `plan`, `execute` into a run directory, resumable) with `Results` (`summary` by tag) |
 | `report.py` | one self-contained HTML page: each prompt with its units shaded by score, the scores, interactions and removal |
-| `cli.py`, `__main__.py` | `contextattr plan | run | report` (also `python -m contextattr`), from a TOML file naming the wrapper by import path |
+| `demo.py` | `demo`: three prompts with planted facts explained by every method, the scores checked against brute force over every combination; on the built-in stand-in or on a user's wrapper |
+| `cli.py`, `__main__.py` | `contextattr plan | run | report` (also `python -m contextattr`), from a TOML file naming the wrapper by import path; `contextattr template` and `contextattr demo` |
 | `__init__.py` | the public names |

@@ -20,5 +20,6 @@ Run from the repository or the unpacked source archive, after `pip install -e ".
 | `test_interactions.py` | the indices of App. C from a surrogate, top-r removal against brute force, Recovery@r, interaction surrogates, the shapiq adapter (with a fake shapiq) |
 | `test_shapiq_methods.py` | marked `shapiq`, run with `CA_TEST_SHAPIQ=1` (5–7 minutes): Faith indices exact from every mask, SPEX recovering planted interactions exactly, ProxySPEX close, the indices equal to shapiq's exact ones |
 | `test_sampled.py` | checks, sampled responses, `Sampled` against the toy model's known rates, its noise from fresh seeds, `intervene` |
+| `test_demo.py` | the demonstration on planted facts: every line `ok` on its stand-in; wrappers that only score or only generate; a model that reads nothing gets notes and still passes; the cache; with `CA_TEST_SHAPIQ=1`, all nine methods and the command |
 | `test_run.py` | `Run`'s plan and execute, resuming, refusing other settings, the summary, the HTML report, the command line on the example, the examples themselves, `contextattr template` |
 | `prompt_helpers.py`, `conftest.py` | the example prompt, Hypothesis strategies and settings |

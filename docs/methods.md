@@ -55,7 +55,7 @@ The budgets the SPEX paper uses (its Table 2), by the number of units:
 
 For `spex`, pass a budget from this table, such as `budget=4032` for up to 11 units. On a short prompt the same few masks come up again and again and the model is asked about each only once: 4,032 masks of a four-unit prompt cost 16 requests.
 
-**`proxyspex` needs a prompt of 8 units or more.** Its tree model (LightGBM) splits a group of masks only when each side keeps at least 20 of them, and a prompt of n units has only 2ⁿ different masks: 32 for 5 units. Measured on functions with known parts: with 3 to 5 units it finds nothing (every score is zero and R² is about 0, with no error); with 6 units, single units only; with 7, pairs too; from 8, sets of three as well. For a shorter prompt use `faithbanzhaf` or `faithshap` with `budget=2**n`, or `spex`.
+**`proxyspex` needs a prompt of 8 units or more.** Its tree model (LightGBM) splits a group of masks only when each side keeps at least 20 of them, and a prompt of n units has only 2ⁿ different masks: 32 for 5 units. So it refuses a prompt of fewer than 6 units, and a budget below 40 masks: it could learn nothing from them. Measured on functions with known parts: with 6 units it finds single units only; with 7, pairs too; from 8, sets of three as well. For a shorter prompt use `faithbanzhaf` or `faithshap` with `budget=2**n`, or `spex`.
 
 [interface.md](interface.md) §7 works out what a budget costs in requests.
 
@@ -109,7 +109,7 @@ Two other ways in take the same settings:
 
 ## 5. How ContextAttr is checked
 
-- Each method is tested against exact answers: formulas whose result is known, and values computed over every mask.
+- Each method is tested against exact answers: formulas whose result is known, and values computed over every mask. You can run such a check on your own model: `contextattr demo` ([wrapper.md](wrapper.md) §10).
 - On a real model (Llama-3.2-3B-Instruct, on one GPU) and a prompt of 20 documents, every method puts first the document the question is about.
 - With its default settings, this SPEX gives the same predictions as the SPEX authors' own code on the same masks (8 of 8 test functions with noise).
 - Against the SPEX paper's published results, on a small sample: the methods come in the paper's order, and R² is within 0.04 of the paper's on short reviews. On HotpotQA every R² is higher than the paper's (SPEX 0.95–0.98 against 0.60–0.87): the task was rebuilt from the paper's description, so those levels are not comparable.

@@ -4,6 +4,8 @@
     contextattr run    run.toml                 explain every prompt into the run directory; resumes a stopped run
     contextattr report <run directory>          the HTML report again, and the summary by tag
     contextattr template [my_wrapper.py]        a wrapper to fill in (wrapper/template.py), written or printed
+    contextattr demo [my_wrapper.py:MyModel]    the demonstration on planted facts (demo.py), on your wrapper or,
+                                                with no wrapper, on the built-in stand-in
 
 run.toml names the wrapper by import path, so one run file works wherever its wrapper does:
 
@@ -147,7 +149,16 @@ def main(argv=None) -> int:
     report.add_argument("directory")
     template = sub.add_parser("template", help="a wrapper to fill in around your model: written to FILE, or printed")
     template.add_argument("file", nargs="?")
+    demo = sub.add_parser("demo", help="the demonstration on planted facts: is the result right with this model?")
+    demo.add_argument("wrapper", nargs="?", help="file.py:Name or module:name, called with no arguments; "
+                                                 "none: the built-in stand-in")
+    demo.add_argument("--cache", help="a file that keeps every answer of the model, so a second run asks nothing")
     args = ap.parse_args(argv)
+    if args.command == "demo":
+        from .demo import demo as run_demo  # noqa: PLC0415
+
+        model = build({"use": args.wrapper}) if args.wrapper else None
+        return 0 if run_demo(model, cache=args.cache) else 1
     if args.command == "template":
         from importlib.resources import files  # noqa: PLC0415
 
