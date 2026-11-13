@@ -10,7 +10,7 @@ Version 0.1 is an early release: the interface may still change.
 
 | You bring | What it is |
 |---|---|
-| **A model** | an open-weight model that you run yourself or host on your own server, with a wrapper written for it (see below). ContextAttr reads the log-probabilities the model gives to answers, so the model must let you read them. To try the package first, a built-in stand-in needs no model |
+| **A model** | an open-weight model that you run yourself or host on your own server, with a wrapper written for it (see below). ContextAttr reads the log-probabilities the model gives to answers, so the model must let you read them |
 | **Prompts** | the prompts your model gets, as chat messages or plain text |
 | **A way to cut them into parts** | the pieces whose effect you want to know: documents, sentences, instructions, examples or words. You mark them yourself, or let `ca.split` cut a text |
 | **Answers** | replies the model could give, each labelled `negative` (an answer you do not want) or `positive` (one you want). You write them, or the model writes them and a check labels them |
@@ -77,7 +77,10 @@ rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · nois
 **How to read the output:**
 
 - The first line names the prompt and the method. `8 masks` are the 8 copies of the prompt, each with some parts removed, that the model was asked about, and `22 requests` is what that cost. `R²` says how far to trust the result: close to 1, the scores describe the model well; close to 0, do not use them. `noise` is how much the model's number changes when it is asked the same thing again.
-- Then each part with its score, highest first. A positive score pushes the model towards the unwanted answer: `d3`, the sentence about winter, is what makes this model say "cold". A negative score pushes it away: `d2` protects against it. A score near zero means the part hardly matters.
+- Then each part with its score. This example asks what pushes the model towards the answer you do not want ("cold"):
+  - a **positive** score: the part pushes towards the unwanted answer. `d3`, the sentence about winter, is what makes this model say "cold";
+  - a **negative** score: the part pushes towards the wanted answer. `d2`, the sentence about summer, protects against "cold";
+  - a score **near zero**: the part hardly matters.
 - `e.scores` gives the scores as a dictionary, and `e.to_html("report.html")` writes a page with each part shaded by its score.
 
 **How the scores are computed:**

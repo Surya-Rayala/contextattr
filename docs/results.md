@@ -2,7 +2,7 @@
 
 What ContextAttr prints, what a score means, and how far to trust it, on one small example that runs anywhere in seconds. [methods.md](methods.md) says how each method computes its scores. In all the docs, `ca` is the package: `import contextattr as ca`.
 
-## 1. The example
+## 1. The example, and how to read it
 
 ```python
 import contextattr as ca
@@ -20,21 +20,41 @@ e = ca.explain(prompt, model, ca.Contrast(), method="kernelshap", budget=8)
 print(e)
 ```
 
-The [README](../README.md) explains each piece of this code. Three words are used from here on:
+It prints:
+
+<!-- output: rio-kernelshap -->
+```
+rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · noise 0 · 22 requests
+  d3              +0.2500  Winter in Brazil runs from June to September.
+  d1              -0.0234  Rio Carnival takes place in February or March.
+  d2              -0.2854  Summer in Brazil runs from December to March.
+```
+
+**How to read it.** `ca.Contrast()` asks one question: what pushes the model towards the answers I do not want? Each score answers it for one part of the prompt:
+
+| Score | The part | In the example |
+|---|---|---|
+| positive | pushes the model towards the unwanted answer | `d3`, the winter sentence: it is what makes this model say "cold" |
+| negative | pushes the model towards the wanted answer | `d2`, the summer sentence: it protects against "cold" |
+| near zero | hardly matters | `d1` |
+
+The further a score is from zero, the stronger the push. The rows are sorted from the strongest push towards the unwanted answer down to the strongest push towards the wanted one.
+
+Words used from here on:
 
 - a *unit* is a part of the prompt that may be removed: `d1`, `d2` and `d3`;
-- the *target*, here `ca.Contrast()`, says which number is read from the model (section 2);
+- the *target*, here `ca.Contrast()`, says what is explained (section 2);
 - the *budget* is how many masked copies of the prompt the model is asked about.
 
-`model` is `ca.ToyModel.demo()`, a stand-in that follows fixed rules written for this example. It is not a language model: its numbers show how to read a result, not how any real model behaves.
+`model` is `ca.ToyModel.demo()`, a stand-in that follows fixed rules written for this example. It is not a language model: its numbers show how to read a result, not how any real model behaves. The [README](../README.md) explains each piece of the code.
 
-## 2. The value: the number every score is about
+## 2. Where the scores come from: the value
 
-A *mask* is one choice of which units to keep. For each mask, ContextAttr builds the prompt with only those units and reads one number from the model, the *value*. With `ca.Contrast()` it is:
+A *mask* is one choice of which units to keep. For each mask, ContextAttr builds the prompt with only those units and reads one number from the model, the *value*. With `ca.Contrast()` the value is how much more likely the model finds the unwanted answers than the wanted ones:
 
 > the mean log-probability per token of the negative answers, minus that of the positive answers
 
-A *log-probability* says how likely the model finds a text: 0 is certain, and the more negative, the less likely. A *token* is the piece of text a model reads at a time, about a word. So a higher value means the model leans more towards the unwanted answer. Three units give 8 masks, and these are their values:
+A *log-probability* says how likely the model finds a text: 0 is certain, and the more negative, the less likely. So a higher value means the model leans more towards the unwanted answer, and a score says how much a unit raises or lowers the value. Three units give 8 masks, and these are their values:
 
 | Units kept | Value |
 |---|---|
@@ -53,19 +73,20 @@ A *log-probability* says how likely the model finds a text: 0 is certain, and th
 
 A score is a summary of this table. A real prompt has far too many masks to ask about all of them, so each method asks about some and estimates the rest.
 
-**A score is measured in the same thing as the value.** Here that is a difference of log-probabilities; with `ca.Sampled` it is a share of replies ([interface.md](interface.md) §5 lists every target). No fixed size counts as large: compare a score with the noise and with the other scores (section 6).
+**The sign depends on what you explain:**
 
-## 3. The printed result
+| Target | A positive score means the unit |
+|---|---|
+| `ca.Contrast()` | pushes towards the unwanted answers (negative: towards the wanted ones) |
+| `ca.LogProb()`, `ca.Pooled(label)` | makes that answer, or those answers, more likely |
+| `ca.Choice(a, b)` | pushes towards answer `a` (negative: towards `b`) |
+| `ca.Sampled(check)` | makes more replies do what the check looks for (section 8) |
 
-<!-- output: rio-kernelshap -->
-```
-rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · noise 0 · 22 requests
-  d3              +0.2500  Winter in Brazil runs from June to September.
-  d1              -0.0234  Rio Carnival takes place in February or March.
-  d2              -0.2854  Summer in Brazil runs from December to March.
-```
+No fixed size counts as large: compare a score with the noise and with the other scores (section 6).
 
-The first line:
+## 3. The first line of a result
+
+`rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · noise 0 · 22 requests`
 
 | Part | Meaning |
 |---|---|
@@ -75,12 +96,6 @@ The first line:
 | `R² 0.991 on 128 test masks` | how well the scores predict the model's values: 1 is perfect (section 6) |
 | `noise 0` | how much the full prompt's value changes when the model is asked again. A score smaller than this means nothing |
 | `22 requests` | what it cost: one request is one masked prompt with one answer to score |
-
-Then one row per unit, highest score first: its id, its score and its text.
-
-- **A positive score pushes the value up.** With `Contrast` that is towards the unwanted answers: `d3` is what makes this model say "cold".
-- **A negative score pushes it down**: `d2` protects against the unwanted answer.
-- **A score near zero** means the unit hardly matters.
 
 ## 4. What a score means, method by method
 

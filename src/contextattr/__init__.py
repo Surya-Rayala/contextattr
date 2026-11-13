@@ -13,7 +13,7 @@ from .targets import Choice, Contrast, LogProb, Pooled, Sampled
 from .value import Value
 from .wrapper import ModelReport, Sampling, Scored, ToyModel, WrapperError, check_model
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 checks = responses   # ca.checks.regex(...), ca.checks.reference(...)
 

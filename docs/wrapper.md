@@ -33,7 +33,6 @@ A *log-probability* says how likely the model finds a text: 0 is certain, and th
 `score` needs one thing from the model: the log-probability of each token of an answer that you supply, read after a prompt. Nothing else is read: not the rest of the vocabulary, and not other possible answers. Any model whose log-probabilities you can read can give this, in your own process (section 5) or behind your own server (section 6).
 
 - **Where the numbers come from.** A model's raw output is a score for every token of its vocabulary, called a *logit*. The function `log_softmax` turns the logits into log-probabilities, and `score` keeps the one of each token of the answer. Server software usually does this itself and returns log-probabilities.
-- **Natural logarithms.** If what you get are probabilities, take the natural logarithm of each. If you get logarithms in base 2 or base 10, multiply them by ln 2 or ln 10.
 - **The text as the model reads it.** You must be able to send the prompt in the model's own chat format, with the answer placed where the model's reply begins. An interface that only takes chat messages and writes its own reply cannot place the answer.
 
 ## 3. The steps

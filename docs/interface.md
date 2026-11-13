@@ -10,21 +10,13 @@ Everything you give ContextAttr and everything you get back. The other docs: [wr
 | unit | a part of the prompt that may be removed: a word, a sentence, a document, or any piece you mark. `n` is the number of units in a prompt |
 | fixed text | everything you do not mark as a unit, such as the question. It is never removed |
 | mask (`m`) | one choice of units to keep: one entry per unit, 1 to keep it and 0 to remove it |
-| masked prompt | the prompt with only the units a mask keeps |
 | response | an answer of the model: one you give, or one sampled from the model |
-| token | the piece of text a model reads at a time: about a word, or part of one |
-| log-probability | how likely the model finds a text, on a log scale: 0 is certain, and the more negative, the less likely |
 | label | `positive` for an answer you want, `negative` for one you do not |
 | check | a function that looks at a response and labels it |
 | target | says which number is read from the model for a masked prompt (§5) |
 | value (`f(m)`) | that number, for mask `m` |
-| method | decides which masks to ask about and works out the scores from their values |
-| budget | how many masks a method may use for one prompt |
-| score | how much a unit pushes the value up (positive) or down (negative) |
-| interaction | what a set of units does together, beyond their own scores |
-| R² | how well the scores predict the value on test masks, drawn separately from the method's own: 1 is perfect |
+| score | how much a unit pushes the value up (positive) or down (negative): [results.md](results.md) says how to read it |
 | request | one unit of work for the model: one masked prompt with one response to score, or one masked prompt to reply to |
-| wrapper | your class around the model ([wrapper.md](wrapper.md)) |
 
 In the code examples: `ca` is the package (`import contextattr as ca`), `prompt` is a `ca.Prompt`, `model` is your wrapper, `e` is one result (an `Explanation`), `run` is a `ca.Run` and `results` is what it returns.
 
@@ -77,19 +69,19 @@ prompt = ca.Prompt("rio-01",
 | | `replace` | `None` | what this unit is replaced by when removed, in place of the run's `replace` setting (§6) |
 | `ca.Response(id, text, ...)` | `id`, `text` | | the answer's name and its text |
 | | `label` | `None` | `"positive"`, `"negative"` or none |
-| | `span` | `None` | `(start, end)` character positions: the part of the answer that matters. Needs a wrapper that returns token texts |
+| | `span` | `None` | `(start, end)` character positions: only this part of the answer is scored. Needs a wrapper that returns token texts |
 | `ca.split(text, by, id=...)` | `by` | `"sentence"` | cuts a text into units: `"word"`, `"sentence"`, `"line"`, `"paragraph"`, or your own function that returns `(start, end)` positions |
 | | `id` | | the units are named `<id>.0`, `<id>.1`, and so on |
 | | `sep`, `tag`, `replace` | | as for a unit, for the whole piece |
 
-`ca.split` goes where a unit would go, for example `"content": [ca.split(long_text, "sentence", id="s"), "Question: ..."]`. Whatever the text, the units and what lies between them give it back exactly, and with every unit kept the prompt is exactly the original.
+`ca.split` goes where a unit would go, for example `"content": [ca.split(long_text, "sentence", id="s"), "Question: ..."]`. With every unit kept, the prompt is exactly the original text.
 
 How `split` cuts:
 
 | `by` | A unit is |
 |---|---|
 | `"word"` | a run of characters without a space |
-| `"sentence"` | text within one line up to `.`, `!`, `?` or `…` (with any closing quotes or brackets) followed by a space and a character that is not lower case, or up to `。`, `！` or `？`. A period does not end a sentence after an initial (`J.`), a dotted abbreviation (`U.S.`, `e.g.`), a title (`Dr.`, `vs.`, `al.`), `Fig.`, `No.`, `Jan.` and the like before a number, or a list marker at a line's start (`1.`, `a.`) |
+| `"sentence"` | text up to `.`, `!` or `?` followed by a space and a capital letter. Common abbreviations (`Dr.`, `e.g.`, `U.S.`) and list markers (`1.`) do not end a sentence |
 | `"line"` | a line with text, its indentation included |
 | `"paragraph"` | lines with text between blank lines |
 
@@ -118,11 +110,11 @@ The same prompt (shown on several lines here; in the file it is one line). `ca.r
 | `id`, `messages` or `text`, `reference`, `responses` | as in Python above |
 | `{"unit": ..., "text": ...}` | a unit; `unit` is its id. `sep`, `tag` and `replace` as above |
 | `"split": "sentence"` on a unit | cuts its text into units `<unit>.0`, `<unit>.1`, … as `ca.split` does |
-| `{"group": ..., "units": [...]}` | an explicit group of units, with an optional `lead` and `sep` that stay while any of its units shows. This is how `write_prompts` writes a split piece |
+| `{"group": ..., "units": [...]}` | a group of units: how `write_prompts` writes a split piece |
 
 ## 3. The model wrapper, written by the user
 
-ContextAttr ships no wrapper for any model or service: writing one is the user's job, and everything after it is the package's. [wrapper.md](wrapper.md) is the guide: what the model has to give, a complete wrapper to copy from, the recipe for a model behind a server, and the rules a wrapper keeps. In short, a wrapper is an object with a `name`, a `score` method and, optionally, a `generate` method:
+ContextAttr ships no wrapper: you write a short one for your model, and [wrapper.md](wrapper.md) is the guide. A wrapper is an object with a `name`, a `score` method and, optionally, a `generate` method:
 
 ```python
 Rendered = str | list[dict]    # a masked prompt as it reaches the wrapper: plain text, or chat messages
@@ -148,10 +140,7 @@ class Model(Protocol):
     def generate(self, prompts: Sequence[Rendered], sampling: Sampling) -> list[list[str]]: ...
 ```
 
-- `score` gets one response per prompt and returns, for each of the response's tokens, the natural logarithm of the probability the model gives that token after the prompt and the response's earlier tokens: `log p(token t | prompt, tokens 1 to t − 1)`. Nothing is generated.
-- `generate` returns `sampling.n` replies for each prompt.
-- These are the two capabilities of lm-evaluation-harness's model interface (`loglikelihood` and `generate_until`), so anyone who has wrapped a model for it knows the shape.
-- `ca.ToyModel` is a compatible wrapper that follows fixed rules: known answers, no model and no weights behind it. It is for tests and a first try.
+`ca.ToyModel` is a stand-in that follows fixed rules, with no model behind it. It is for tests and a first try.
 
 ## 4. Responses and labels
 
@@ -160,20 +149,20 @@ A response is an answer whose likelihood is explained. There are three ways to g
 | Where the responses come from | How | Model calls |
 |---|---|---|
 | you give them | `responses=[ca.Response(...)]` in the prompt | none |
-| the model's own answer | `ca.sample(prompt, model, ca.Sampling(n=1))`, or `sample=ca.Sampling(n=1)` in a run (§8). Temperature 0 gives the model's most likely answer, which is what SPEX and ContextCite explain | one generation per prompt |
+| the model's own answer | `ca.sample(prompt, model, ca.Sampling(n=1))`, or `sample=ca.Sampling(n=1)` in a run (§8). Temperature 0 gives the model's most likely answer | one generation per prompt |
 | several sampled answers | `ca.sample(prompt, model, ca.Sampling(n=8, temperature=0.7), check)`, or `sample=` and `check=` in a run | 8 generations per prompt, once |
 
-`ca.sample` returns the prompt with the replies added to its responses as `sample-0`, `sample-1`, …, each labelled by the check. Without a `sampling` it draws 8 replies at temperature 0.7 and top_p 0.95, up to 256 tokens, with seed 0.
+`ca.sample` returns the prompt with the replies added to its responses as `sample-0`, `sample-1`, …, each labelled by the check. Without a `sampling` it draws 8 replies at temperature 0.7.
 
 A *check* labels a response. Three kinds:
 
 | Check | Labels a response |
 |---|---|
 | `ca.checks.regex(pattern, negative=True)` | `negative` when the pattern is found in it, `positive` otherwise. With `negative=False` the other way round. Case is ignored |
-| `ca.checks.reference(contains=True)` | `positive` when it contains the prompt's `reference` (lower case, punctuation and extra spaces ignored), `negative` otherwise. With `contains=False` it must equal the reference |
+| `ca.checks.reference(contains=True)` | `positive` when it contains the prompt's `reference`, `negative` otherwise. With `contains=False` it must equal the reference |
 | your own function `check(prompt, response)` | returns `"positive"`, `"negative"` or `None`; or `True` (negative) or `False` (positive); or a number, such as a judge model's score; or a `ca.Verdict(label, score, span)` to also say which part of the response matters |
 
-A run remembers which check it used, by its code and the values it holds, and refuses to continue with a different one. If your check depends on anything else, such as the version of a judge model, put that into the function's `__name__` and set `check.named = True`.
+A run remembers which check it used and refuses to continue with a different one.
 
 ## 5. Targets: which number is explained
 
@@ -187,55 +176,38 @@ The target turns the model's answers for one masked prompt into one number, the 
 | `ca.Choice(a, b)` | log p(`a`) − log p(`b`), each taken as the model's whole answer, for example `ca.Choice("True", "False")` | yes/no and multiple-choice questions | `score` |
 | `ca.Sampled(check, samples=4, sampling=None)` | the share of `samples` fresh replies to that prompt that the check labels negative; when the check returns numbers, their mean | the behaviour itself: how often the model's own replies do something | `generate` |
 
-As formulas, for a response of T tokens, where `lp_t` is what the wrapper's `score` returns for token t (§3):
-
-```
-LogProb, reduce="mean"      (lp_1 + … + lp_T) / T
-         reduce="sum"       lp_1 + … + lp_T  =  log p(the whole response | the masked prompt)
-         reduce="logodds"   log( p / (1 − p) ),  with p = exp(lp_1 + … + lp_T)
-Pooled(label)               the mean of LogProb over the responses with that label
-Contrast()                  Pooled("negative") − Pooled("positive")
-Choice(a, b)                the sum for a − the sum for b
-Sampled(check)              (replies the check labels negative) / (replies it labels at all),
-                            or the mean of the numbers the check returns
-```
-
-A response with a `span` (§2) counts only the tokens that overlap the span.
-
 Their settings:
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `response` (`LogProb`) | `None` | the id of the response to explain. `None` works when the prompt has exactly one |
-| `reduce` | `"mean"` | `"mean"`: log-probability per token, which does not favour short answers (the negative log-perplexity the SPEX paper uses, its §3). `"sum"`: of the whole answer. `"logodds"`: log(p / (1 − p)) of the whole answer's probability p, as the ContextCite paper uses |
+| `reduce` | `"mean"` | `"mean"`: log-probability per token, which does not favour short answers. `"sum"`: of the whole answer. `"logodds"`: log(p / (1 − p)) of the whole answer's probability p |
 | `label` (`Pooled`) | `"negative"` | which responses to pool |
 | `samples` (`Sampled`) | 4 | fresh replies per masked prompt. More give less noise and cost more |
-| `sampling` (`Sampled`) | `None` | how the replies are sampled, a `ca.Sampling`. `None` means temperature 0.7, top_p 0.95, up to 256 tokens, seed 0 |
+| `sampling` (`Sampled`) | `None` | how the replies are sampled, a `ca.Sampling`. `None` means temperature 0.7 |
 
 Which to use:
 
-- Scored targets (the first four) cost one pass over prompt and response per mask, generate nothing, and give the same number every time. They are the ones to use by default.
-- Use `Contrast` whenever you have both labels. Removing context tends to make every answer less likely, so the `LogProb` of an unwanted answer alone mixes "needed for any answer" with "pushes towards the unwanted one". The difference cancels what the two share.
-- `Sampled` costs `samples` generations per mask and is noisy (§7). Keep its budget small and confirm the result with `ca.intervene` ([results.md](results.md) §8).
+- The first four cost one pass of the model per mask and give the same number every time. Use them by default.
+- Use `Contrast` whenever you have both labels. Removing context makes every answer less likely, wanted or not; the difference cancels that, and leaves what pushes towards the unwanted answers.
+- `Sampled` costs `samples` generations per mask and is noisy. Keep its budget small and confirm the result with `ca.intervene` ([results.md](results.md) §8).
 
 ## 6. Settings
 
-[methods.md](methods.md) §4 lists every setting of `ca.explain` with its default and meaning: `method`, `budget`, `test_masks`, `seed`, `replace`, `noise_repeats`, `removal`, `cache` and `batch_size`. `ca.Run` takes the same ones except `cache` (a run keeps every answer in its own folder), and adds `sample` and `check` (§4, §8). Device, precision, chat template and server options are not settings of ContextAttr: they belong to your wrapper.
+[methods.md](methods.md) §4 lists every setting of `ca.explain` with its default and meaning: `method`, `budget`, `test_masks`, `seed`, `replace`, `noise_repeats`, `removal`, `cache` and `batch_size`. `ca.Run` takes the same ones except `cache` (a run keeps every answer in its own folder), and adds `sample` and `check` (§4, §8).
 
 How a unit is removed:
 
 | `replace` | A removed unit is | Use it when |
 |---|---|---|
-| `None` (the default) | deleted, with its `sep` | always possible, with every model, and the text stays natural (ContextCite does this) |
-| a text, such as `"[UNK]"` | replaced by that text; its `sep` stays | you want to reproduce SPEX, which masks with `[UNK]` |
+| `None` (the default) | deleted, with its `sep` | the usual choice: the text stays natural |
+| a text, such as `"[UNK]"` | replaced by that text; its `sep` stays | you want to mask as the SPEX paper does |
 
-A unit's own `replace` (§2) takes the place of the run's setting for that unit. Replacing can make a prompt longer than the original, since a placeholder may be several tokens: the longest prompt is then the one with every unit replaced, so check that it still fits your model.
+A unit's own `replace` (§2) takes the place of the run's setting for that unit. Replacing can make a prompt longer than the original: check that it still fits your model.
 
 ## 7. Cost and what is practical
 
-Requests per prompt = (the method's masks + the test masks) × the responses scored, plus the noise repeats and, once, the samples of §4. A mask that comes up twice is asked once. For `Sampled`, a request is one masked prompt, and it generates `samples` replies. A request carries about the masked prompt and one response: on your own hardware the time is tokens ÷ throughput, and on a paid service the cost is tokens × price. `run.plan()` counts all of this before any call, and `run.plan(measure=10)` also sends ten real requests, times them and projects the whole run (§8).
-
-For example (measured with a transformers wrapper on one H100 GPU): Llama-3.2-3B-Instruct in bfloat16 scores 45,000 tokens per second at a batch of 16, which is 58 requests per second of 777 tokens each.
+Requests per prompt = (the method's masks + the test masks) × the responses scored, plus the noise repeats. A mask that comes up twice is asked once. `run.plan()` counts all of this before any call, and `run.plan(measure=10)` also times ten real requests and projects the whole run (§8).
 
 Masks per prompt, by the number of units n ([methods.md](methods.md) §3):
 
@@ -245,16 +217,13 @@ Masks per prompt, by the number of units n ([methods.md](methods.md) §3):
 | `contextcite`, `lime`, `banzhaf`, `kernelshap` | the budget | 64–256 | 256–1,024 | 1,024 or more |
 | `faithbanzhaf`, `faithshap` with pairs | a few times 1 + n + n(n − 1)/2 | about 600 | about 15,000 | not practical |
 | `spex` | SPEX's Table 2 | 5,376 | 7,872 | 10,752 |
-| `proxyspex` | about a tenth of `spex`'s (Butler 2025) | about 500 | about 800 | about 1,100 |
+| `proxyspex` | about a tenth of `spex`'s | about 500 | about 800 | about 1,100 |
 
-For example (worked out, not measured): a prompt cut into 100 sentences, with 4 responses scored per mask and 128 test masks, needs (64 + 128) × 4 = 768 requests with `contextcite` at 64 masks, and (7,872 + 128) × 4 = 32,000 with `spex`.
-
-Suggestions:
+For example (worked out, not measured): a prompt cut into 100 sentences, with 4 responses and 128 test masks, needs (64 + 128) × 4 = 768 requests with `contextcite` at 64 masks, and (7,872 + 128) × 4 = 32,000 with `spex`.
 
 - Cost grows with masks × responses × prompt length. Use sentences or documents as units for long contexts, and words only for short texts.
-- Screen many prompts with `contextcite` at 64 masks (`loo` when n is 20 or less). Run `spex` or `proxyspex` only on the prompts worth a closer look, with a scored target.
-- `Sampled` targets are noisy: a share p counted from k replies has a standard error of √(p(1 − p)/k), which is 0.18 for 8 replies and a share of one half. Keep their budgets small, prefer a check that returns a number to a yes/no check, and confirm the result with `ca.intervene` on 64 or more replies.
-- Every answer of the model is cached. A run keeps them in its folder, so an interrupted run continues and nothing is paid for twice. A run folder holds one method. With `ca.explain(..., cache=path)`, another method on the same prompt reuses the answers for the masks the two share, such as the test masks.
+- Screen many prompts with `contextcite` at 64 masks. Run `spex` or `proxyspex` only on the prompts worth a closer look.
+- Every answer of the model is cached, so an interrupted run continues and nothing is paid for twice.
 
 ## 8. Runs: many prompts, and the command line
 
@@ -287,10 +256,10 @@ print(ca.intervene(e.prompt, model, ca.checks.regex(r"\bwinter\b"), [u for u, _ 
 
 | Call | Gives |
 |---|---|
-| `run.plan(measure=0)` | before any spending: for each prompt its units, masks, requests, generations and tokens, and the totals. With `measure=10`, ten real requests of the first prompt are also sent and timed, and the time of the whole run is projected. Nothing has been sampled at that point, so with `sample=` the first prompt must already have the responses the target needs (for `Contrast`, one of each label) |
-| `run.execute(folder)` | explains every prompt into the folder and returns the results. If the folder holds an interrupted run with the same settings, it continues where that stopped. Other settings, or a prompt changed since, are refused |
+| `run.plan(measure=0)` | before any spending: masks, requests and tokens for each prompt, and the totals. With `measure=10`, ten real requests of the first prompt are also timed and the whole run's time is projected. With `sample=`, the first prompt must then already have the responses the target needs |
+| `run.execute(folder)` | explains every prompt into the folder and returns the results. An interrupted run with the same settings continues where it stopped; other settings are refused |
 | `results.explanations` | one `Explanation` per prompt ([results.md](results.md) §7) |
-| `results.summary(by="tag", top=3)` | for each tag: how many prompts and units have it, the mean score of its units, and the share of those prompts in which one of them is among the top 3. `by="unit"` does the same for each unit id |
+| `results.summary(by="tag", top=3)` | for each tag: the mean score of its units, and the share of prompts in which one of them is among the top 3. `by="unit"` does the same for each unit id |
 | `results.to_html(path)` | one page with every prompt, its units shaded by score |
 | `ca.Results.load(folder)` | the results of a finished run, read back |
 
