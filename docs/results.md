@@ -53,7 +53,7 @@ Read from the table:
 - `d2` (the summer sentence) lowers it by 0.262: it pushes the model towards "hot".
 - `d1` (Carnival is in February or March) does nothing alone. With `d2` it lowers the value by a further 0.047 (−0.309 against −0.262): the two sentences matter *together*, because only together do they say that Carnival falls in summer.
 
-A score is a summary of this table. A real prompt has far too many masks to ask about all of them (2ⁿ for n units), so each method asks about some and estimates the rest. The scores also predict the value of any mask: start from a base number and add the scores of the units kept. R² (section 6) says how close that prediction comes to what the model really gives.
+A score is a summary of this table. A real prompt has far too many masks to ask about all of them (2ⁿ for n units), so each method asks about some and estimates the rest. The scores also predict the value of any mask: start from a base number and add the scores of the units kept. R² (section 6) says how close that prediction comes to what the model really gives. [methods.md](methods.md) §2 gives the formula, and says exactly how each method computes its scores.
 
 **A score is measured in the same thing as the value**, so what a score of +0.25 means depends on the target. No fixed size counts as large: compare a score with the noise and with the other scores (section 6).
 
@@ -82,9 +82,9 @@ The first line:
 | `rio` | the prompt's id |
 | `KernelSHAP(paired=True)` | the method and its settings |
 | `8 masks` | how many masks the method used |
-| `R² 0.991 on 128 test masks` | how well the scores predict the model on 128 other masks. 1 is perfect (section 6) |
+| `R² 0.991 on 128 test masks` | how well the scores predict the model on 128 test masks, drawn separately from the method's own. 1 is perfect (section 6) |
 | `noise 0` | how much the value of the full prompt changes when the model is asked again. Scores smaller than this mean nothing (section 6) |
-| `22 requests` | what it cost: each request is one masked prompt with one answer to score. Here 8 different masked prompts × 2 answers, and 6 more to measure the noise. A mask that comes up twice costs nothing more: the answer is remembered |
+| `22 requests` | what it cost: each request is one masked prompt with one answer to score. Here 8 different masked prompts × 2 answers, and 6 more to measure the noise. A mask that comes up twice costs nothing more: the answer is remembered. So the 128 test masks cost nothing here: three units have only 8 masks, and the method had asked about all of them |
 
 Then one row per unit, highest score first: the unit's id, its score, and its text.
 
@@ -96,7 +96,7 @@ Interaction methods add rows marked `(together)` (section 4), and `removal=` add
 
 ## 4. What a score means, method by method
 
-Every method ranks the three units the same way here, but the numbers differ, because each method answers a slightly different question. These are the scores of all the methods on the example, each from the call of section 1 with another `method=` (`spex` with `budget=4032`: it needs budgets of its own, [methods.md](methods.md) §2):
+Every method ranks the three units the same way here, but the numbers differ, because each method answers a slightly different question. These are the scores of all the methods on the example, each from the call of section 1 with another `method=` (`contextcite` and `lime` with the default `budget=64`, and `spex` with `budget=4032`: it needs budgets of its own, [methods.md](methods.md) §3):
 
 | `method=` | `d1` | `d2` | `d3` | `d1` and `d2` together | R² | A unit's score is |
 |---|---|---|---|---|---|---|
@@ -108,11 +108,24 @@ Every method ranks the three units the same way here, but the numbers differ, be
 | `faithbanzhaf`, `faithshap`, `spex` | 0.000 | −0.262 | +0.250 | −0.047 | 1.000 | the unit's effect on its own. What units do together is a separate row |
 | `proxyspex` | needs a longer prompt: section 5 | | | | | as `spex`, estimated from fewer masks |
 
-`d1` shows the difference. Its effect exists only together with `d2`, and the methods account for that in three ways:
+### The arithmetic, for `d1`
 
-- **`loo`** gives the whole joint effect (−0.047) to `d1`, and again to `d2`, since removing either one loses it. Its scores can therefore count a joint effect twice.
-- **`banzhaf` and `kernelshap`** split the joint effect evenly: half (−0.023) goes to `d1` and half to `d2`.
-- **The interaction methods** keep it apart: `d1` alone scores 0, `d2` alone −0.262, and the row `d1 & d2` holds the −0.047.
+`d1` shows the difference. The eight values of section 2 give the value without and with `d1`, for each combination of the other two units:
+
+| The other units kept | Value without `d1` | Value with `d1` | Change when `d1` is added |
+|---|---|---|---|
+| neither | 0.000 | 0.000 | 0.000 |
+| only `d2` | −0.262 | −0.309 | −0.047 |
+| only `d3` | +0.250 | +0.250 | 0.000 |
+| both | −0.012 | −0.059 | −0.047 |
+
+`d1` changes the value only when `d2` is there. Each method turns these four changes into its numbers in its own way ([methods.md](methods.md) §2 has the formulas):
+
+- **`loo`** reads the last row alone, where all the other units are kept: −0.047. `d2` gets the same joint effect once more: its own last row is −0.309, against −0.262 without `d1`. So `loo` can count a joint effect twice.
+- **`banzhaf`** takes the plain mean of the four changes: (0 − 0.047 + 0 − 0.047) / 4 = −0.023. Half of the joint effect goes to `d1`, and the other half to `d2`.
+- **`kernelshap`** takes a weighted mean. The rows with neither and with both of the other units count 1/3 each, and the two rows between them 1/6 each: −0.047/6 − 0.047/3 = −0.023. Here that equals `banzhaf`, because the only joint effect is one of two units. An effect that needs three units together is shared in thirds by `kernelshap` and in quarters by `banzhaf`.
+- **`contextcite` and `lime`** estimate such an average from 64 random masks, with a pull towards zero: −0.007 and −0.021.
+- **The interaction methods** give two numbers in place of one. `d1`'s own score is the first row, 0.000: what `d1` does with nothing else there. The row `d1 & d2` is what the pair adds: the change with `d2` there minus the change without it, −0.047 − 0.000 = −0.047.
 
 ### Leave-one-out: `loo`
 
@@ -136,7 +149,11 @@ rio · ContextCite(alpha=0.01, standardize=True) · 64 masks · R² 0.991 on 128
   d2              -0.2682  Summer in Brazil runs from December to March.
 ```
 
-These four remove many units at once, and then find the one number per unit that, added up over the units kept, comes closest to the values the model gave. Read a score as "the value is this much higher, on average, when the unit is there". `contextcite` and `lime` trade a little accuracy in each number for steadier results from few masks, which is why their scores here are slightly smaller than the exact −0.285 and +0.250.
+These four remove many units at once, and then find, by least squares, the one number per unit that, added up over the units kept, comes closest to the values the model gave. Read a score as "the value is this much higher, on average, when the unit is there". They differ in which masks they ask about and how much each counts:
+
+- `banzhaf` counts every mask the same. With all 8 masks, as here, its scores are exact averages.
+- `kernelshap` counts most the masks that keep very few or very many units, and fits the empty and the full prompt exactly. Its scores add up to the full prompt's value minus the empty prompt's: −0.0234 − 0.2854 + 0.2500 = −0.059 to three decimals, the full prompt's value in section 2.
+- `contextcite` and `lime` add a charge on the size of the scores, which pulls them towards zero. That gives steadier results from few masks, and it is why their scores here are slightly smaller than the exact −0.285 and +0.250. `contextcite`'s charge sets small scores to exactly zero, as section 5 shows.
 
 ### Scores for units and for sets of units: `faithbanzhaf`, `faithshap`, `spex`, `proxyspex`
 
@@ -149,13 +166,13 @@ rio · SPEX(degree=5, chase_depth=10) · 4032 masks · R² 1 on 128 test masks �
   d1 & d2         -0.0469  (together)
 ```
 
-A row marked `(together)` is an *interaction*: what the units add when all of them are in the prompt, beyond their own scores. To get the value these scores predict for any choice of units, add the scores of the units kept and the interactions whose units are all kept. For the full prompt: 0.000 − 0.262 + 0.250 − 0.047 = −0.059, the value in section 2.
+A row marked `(together)` is an *interaction*: what the units add when all of them are in the prompt, beyond their own scores. To get the value these scores predict for any choice of units, start from the base (the prediction for the empty prompt, here 0.000), and add the scores of the units kept and the interactions whose units are all kept. For the full prompt: 0.000 − 0.262 + 0.250 − 0.047 = −0.059, the value in section 2.
 
 - A negative interaction means the units push the value down more together than apart, as here. A positive one means they push it up more together.
 - When two units say the same thing, each scores high alone and their interaction has the opposite sign: together they add less than their two scores suggest.
 - To compare with the one-score-per-unit methods, `e.shapley()` and `e.banzhaf()` fold the interactions back into one number per unit. Here both give `d1` −0.023, `d2` −0.285 and `d3` +0.250, the `kernelshap` scores.
 
-`faithbanzhaf` and `faithshap` score every pair (or every set up to `max_order`), so they print many interactions that are zero; `spex` and `proxyspex` keep only the few that matter.
+`faithbanzhaf` and `faithshap` fit a term for every pair (or every set up to `max_order`), so they print many interactions that are zero. `spex` and `proxyspex` find the few sets that matter, of up to five units, without fitting a term for every set, and print only those ([methods.md](methods.md) §2 says how).
 
 ## 5. A longer prompt
 
@@ -234,24 +251,36 @@ rio-12 · ProxySPEX(max_order=5, hpo=True) · 512 masks · R² 0.992 on 128 test
   d2              -0.2860  Summer in Brazil runs from December to March.
 ```
 
-`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §2 says why). It refuses the three-unit example, which has only 8 masks for it to learn from.
+`proxyspex` needs a prompt of 8 units or more ([methods.md](methods.md) §3 says why). It refuses the three-unit example, which has only 8 masks for it to learn from.
 
 ## 6. How far to trust a result
 
 | Look at | It tells you | Rule of thumb |
 |---|---|---|
-| `e.r2` | how well the scores predict the model on masks the method did not use. 1 is perfect; 0 is no better than always guessing the average; below 0 is worse than that | near 1: use the scores. Near 0 or below: do not. In between: trust the order of the top units more than the size of small scores |
+| `e.r2` | how well the scores predict the model on the test masks. 1 is perfect; 0 is no better than always guessing the average; below 0 is worse than that | near 1: use the scores. Near 0 or below: do not. In between: trust the order of the top units more than the size of small scores |
 | `e.noise["std"]` | how much the value of the full prompt moves when the model is asked again. 0 for a model that always answers the same | a score smaller than the noise means nothing |
 | scores of the same size on units that cannot matter | the scatter of the method itself, as `lime` shows in section 5 | only scores that stand clear of the rest mean something |
 | `removal=(1, 2, 3)` | the value is measured again without the 1, 2 and 3 units whose removal should change it most, up or down | if the value hardly moves, those units are not what drives it |
 | `ca.intervene(...)` | the model generates fresh replies with and without the top units | the final check, on the behaviour itself (section 8) |
+
+**How these are computed.** `f(m)` is the value the model gives for mask `m`, and `f̂(m)` the value the scores predict for it ([methods.md](methods.md) §2):
+
+```
+R²    = 1 − Σ (f(m) − f̂(m))² / Σ (f(m) − mean of f)²          over the test masks
+noise = the standard deviation of the full prompt's value, asked noise_repeats + 1 times
+Rem   = | f(full prompt) − f(prompt without the units) | / | f(full prompt) |
+```
+
+- The test masks keep or remove each unit by coin flip. They are drawn separately from the method's own masks, and are the same for every method run with the same `seed`. On a long prompt they are masks the method did not ask about. On a short one they include masks it did ask about (three units have only 8 masks), and R² then says how well the scores describe the values, not how well they predict new ones.
+- R² compares the squared error of the scores' predictions with the squared error of always predicting the mean value. At R² 0.9, the first is a tenth of the second.
+- The noise is 0 for a scored target on a model that always returns the same numbers. With `ca.Sampled` each asking draws fresh replies, so it is above 0.
 
 **When R² is low.** A real model gives less than this toy example: with Llama-3.2-3B-Instruct on a prompt of 20 documents, R² was between 0.81 and 0.99, depending on the method. Well below that, try these in order:
 
 1. **More masks.** Double `budget` and see whether R² rises. On the 12-sentence prompt of section 5, `lime` has R² 0.49 with 16 masks, 0.95 with 64 and 0.99 with 128.
 2. **A steadier value.** If the noise in the first line is above 0, or the target is `ca.Sampled`, the values themselves are shaky. Raise `samples`, or use a scored target if your wrapper can score.
 3. **A method that scores units together.** With one score per unit, R² stays low when units matter only together. On a real model (Qwen2.5-0.5B-Instruct, the three sentences of section 1), `kernelshap` had R² 0.73 and `spex` 1.00.
-4. **The right method for the size.** `proxyspex` needs 8 units or more: with 6 or 7 it finds less than is there ([methods.md](methods.md) §2). `loo` and `lime` often have a lower R² than the others, as in sections 4 and 5, even when their order of the units is right.
+4. **The right method for the size.** `proxyspex` needs 8 units or more: with 6 or 7 it finds less than is there ([methods.md](methods.md) §3). `loo` and `lime` often have a lower R² than the others, as in sections 4 and 5, even when their order of the units is right.
 
 If R² stays low, use only the order of the top units, and confirm it with `removal=` or `ca.intervene` before you act on it. `R² n/a` with test masks means that every one of them gave the same value: nothing you marked changes this answer.
 
@@ -263,7 +292,7 @@ With `removal=(1, 2)`, the result ends with:
   removing d1, d2: the value moves by +0.3089 (Rem 5.25)
 ```
 
-Each row names the units whose removal changes the result most, and how far the value really moved when the model was asked without them. `Rem` is that change divided by the size of the full prompt's value (the measure the SPEX paper reports). When the full prompt's value is near zero, as with `Contrast` here, read the change and not `Rem`.
+Each row names the units whose removal changes the result most, and how far the value really moved when the model was asked without them. The units are chosen from the scores alone: of all ways to remove that many units, the one for which the scores predict the largest change, up or down (every way is tried up to 20,000 of them; beyond that, one unit at a time). `Rem` is the real change divided by the size of the full prompt's value (the SPEX paper's measure, its eq. 8). When the full prompt's value is near zero, as with `Contrast` here, read the change and not `Rem`.
 
 ## 7. Everything a result holds
 
@@ -279,8 +308,8 @@ Each row names the units whose removal changes the result most, and how far the 
 | `e.masks`, `e.test_masks` | how many masks the method used, and how many more R² was measured on |
 | `e.requests` | `{"requests": ..., "reused": ..., "calls": ...}`: requests sent to the model, answers taken from the cache instead, and calls of the wrapper |
 | `e.removal` | the removal rows of section 6, as a list |
-| `e.shapley()`, `e.banzhaf()` | one number per unit from any method's result, interactions folded in |
-| `e.shapley_taylor(order)` | for specialists: the Shapley-Taylor interaction index of that order |
+| `e.shapley()`, `e.banzhaf()` | one number per unit from any method's result, interactions folded in. `shapley()` shares each interaction equally among its units: a set of k units gives each 1/k of its term. `banzhaf()` gives each of them 1/2^(k−1) of it |
+| `e.shapley_taylor(order)` | the Shapley-Taylor interaction index of that order: terms of sets smaller than `order` stay as they are, and the term of each larger set is shared equally among its subsets of `order` units |
 | `e.to_html(path)` | a page showing the prompt with each unit shaded by its score |
 | `e.as_dict()` | everything above as a dictionary, to save as JSON; `ca.Explanation.from_dict` reads it back |
 
@@ -303,7 +332,7 @@ rio · LeaveOneOut() · 4 masks · R² 0.588 on 128 test masks · noise 0.12 · 
 ```
 
 - The scores are shares of replies: without `d3`, 37.5 percentage points fewer replies say "cold"; without `d2`, 62.5 points more do.
-- The noise is 0.12, because a share of 8 replies changes from one draw to the next. `d1`'s +0.125 is the size of the noise: it means nothing. More `samples` lower the noise; each sample costs one more generation per masked prompt.
+- The noise is 0.12, because a share of 8 replies changes from one draw to the next. A share p counted from k replies has a standard error of √(p(1 − p)/k): 0.18 for a share of one half and 8 replies. `d1`'s +0.125 is the size of the noise: it means nothing. More `samples` lower the noise, by half for four times as many; each sample costs one more generation per masked prompt.
 - R² is lower for the same reason: the values the scores are compared with are themselves noisy.
 
 To confirm a result on the behaviour itself, remove the top units and let the model answer again, many times:
@@ -312,7 +341,7 @@ To confirm a result on the behaviour itself, remove the top units and let the mo
 ca.intervene(prompt, model, cold, ["d3"], samples=64)
 ```
 
-gives `{"dropped": ["d3"], "before": 0.531, "after": 0.0, "change": -0.531, "se": 0.063, ...}`: 53 % of 64 replies said "cold" with the full prompt and none did without `d3`. `se` is the standard error of the change; a change of several times `se` is real.
+gives `{"dropped": ["d3"], "before": 0.531, "after": 0.0, "change": -0.531, "se": 0.063, ...}`: 53 % of 64 replies said "cold" with the full prompt and none did without `d3`. `se` is the standard error of the change: √(se of before² + se of after²), each the spread of the check's results over the replies, divided by the square root of their number. A change of several times `se` is real.
 
 ## 9. From scores to a better prompt
 

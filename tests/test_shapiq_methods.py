@@ -112,7 +112,7 @@ def test_proxyspex_comes_close():
 
 
 def test_proxyspex_by_the_number_of_units_and_without_a_word_from_lightgbm(capfd):
-    """What docs/methods.md §2 says ProxySPEX finds: single units from 64 masks, pairs from 128, sets of three from
+    """What docs/methods.md §3 says ProxySPEX finds: single units from 64 masks, pairs from 128, sets of three from
     256 (measured 2026-11-12). LightGBM printed tens of thousands of progress lines; with verbosity −1 it prints
     none, and these are the numbers measured before that change."""
     def f(masks):

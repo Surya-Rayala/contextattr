@@ -99,8 +99,8 @@ The prompts are already masked: ContextAttr has removed the parts it is testing.
 | Field | Default | Meaning |
 |---|---|---|
 | `n` | 1 | replies per prompt |
-| `temperature` | 0.0 | how random the replies are. 0 always picks the most likely next token (called greedy); higher gives more varied replies |
-| `top_p` | 1.0 | sample only among the most likely tokens that together have this probability. 1.0 means all of them |
+| `temperature` | 0.0 | how random the replies are. 0 always picks the most likely next token (greedy decoding); higher gives more varied replies |
+| `top_p` | 1.0 | nucleus sampling: sample only among the most likely tokens that together have this probability. 1.0 means all of them |
 | `max_tokens` | 256 | the longest reply |
 | `seed` | 0 | the same seed should give the same replies; `None` means no seed |
 | `stop` | `()` | strings that end a reply; the reply does not include them |
@@ -111,7 +111,7 @@ The prompts are already masked: ContextAttr has removed the parts it is testing.
 [ca.Scored(logprobs=[-0.21, -1.35, -0.08])]
 ```
 
-Each number is the natural-log probability the model gives that token of the response, given the prompt and the response's earlier tokens. To get them:
+Each number is the natural-log probability the model gives that token of the response, given the prompt and the response's earlier tokens: `log p(token t | prompt, tokens 1 to t − 1)`. Their sum is the log-probability of the whole response after that prompt, and their mean is what the default target explains ([interface.md](interface.md) §5). To get them:
 
 1. Format the prompt as your model expects. A chat model wants each message wrapped in its own marker tokens: its *chat template*.
 2. Put the response where the model's reply would begin.
@@ -219,7 +219,7 @@ if __name__ == "__main__":
 ```
 
 - **Speed.** `score` is where a run spends its time. To go faster, score a batch of prompts in one pass (pad on the left, so that every response ends at the last position) and load the model in a lower precision, for example `LocalModel(path, device="cuda", dtype=torch.bfloat16)` (`torch_dtype` in older versions of transformers).
-- **Precision and batches.** In bfloat16, the value of a masked prompt shifts a little with the batch it is padded into: for Llama-3.2-3B-Instruct by 0.022 in the mean log-probability per token, 1.6 % of the spread over masks (measured). Where that matters, score in float32.
+- **Precision and batches.** In bfloat16, the value of a masked prompt shifts a little with the batch it is padded into: for Llama-3.2-3B-Instruct the shift had a standard deviation of 0.022 in the mean log-probability per token (measured: one half-masked prompt scored in 16 different batches), which is 1.6 % of the spread over masks (derived). The noise in a result's first line does not show it: the noise repeats ask about the full prompt alone. Where it matters, score the same masks at two batch sizes to see it, or score in float32.
 - **The model's own generation settings.** `model.generate` also applies whatever the model's `generation_config` sets, such as a repetition penalty. Replace that config if you want only `sampling` to decide.
 - **Prompts that change by the day.** Llama 3's chat template writes today's date into every prompt. Pass a fixed `date_string="..."` to `apply_chat_template`, or cached answers from yesterday no longer match today's prompts.
 

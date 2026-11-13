@@ -22,7 +22,7 @@ Everything you give ContextAttr and everything you get back. The other docs: [wr
 | budget | how many masks a method may use for one prompt |
 | score | how much a unit pushes the value up (positive) or down (negative) |
 | interaction | what a set of units does together, beyond their own scores |
-| R² | how well the scores predict the value on masks the method did not use: 1 is perfect |
+| R² | how well the scores predict the value on test masks, drawn separately from the method's own: 1 is perfect |
 | request | one unit of work for the model: one masked prompt with one response to score, or one masked prompt to reply to |
 | wrapper | your class around the model ([wrapper.md](wrapper.md)) |
 
@@ -33,7 +33,7 @@ In the code examples: `ca` is the package (`import contextattr as ca`), `prompt`
 1. You give prompts with their units marked (§2), and a wrapper around your model (§3).
 2. Each prompt gets responses: the ones you give, or ones sampled from the model and labelled by a check (§4).
 3. The method picks masks. For each mask, the wrapper scores the responses or generates replies, and the target turns that into one value (§5).
-4. The method works out a score per unit, and per set of units, from the values. The result is checked on other masks (R²) and reported.
+4. The method works out a score per unit, and per set of units, from the values. The result is checked on test masks (R²) and reported.
 
 Three ways in, from the usual to the most general:
 
@@ -89,7 +89,7 @@ How `split` cuts:
 | `by` | A unit is |
 |---|---|
 | `"word"` | a run of characters without a space |
-| `"sentence"` | text within one line up to `.`, `!`, `?` or `…` followed by a space and a character that is not lower case, or up to `。`, `！` or `？`. Common abbreviations (`Dr.`, `e.g.`, `U.S.`, `Fig. 2`) and list markers (`1.`) do not end a sentence |
+| `"sentence"` | text within one line up to `.`, `!`, `?` or `…` (with any closing quotes or brackets) followed by a space and a character that is not lower case, or up to `。`, `！` or `？`. A period does not end a sentence after an initial (`J.`), a dotted abbreviation (`U.S.`, `e.g.`), a title (`Dr.`, `vs.`, `al.`), `Fig.`, `No.`, `Jan.` and the like before a number, or a list marker at a line's start (`1.`, `a.`) |
 | `"line"` | a line with text, its indentation included |
 | `"paragraph"` | lines with text between blank lines |
 
@@ -148,7 +148,10 @@ class Model(Protocol):
     def generate(self, prompts: Sequence[Rendered], sampling: Sampling) -> list[list[str]]: ...
 ```
 
-`ca.ToyModel` is a compatible wrapper that follows fixed rules: known answers, no model and no weights behind it. It is for tests and a first try.
+- `score` gets one response per prompt and returns, for each of the response's tokens, the natural logarithm of the probability the model gives that token after the prompt and the response's earlier tokens: `log p(token t | prompt, tokens 1 to t − 1)`. Nothing is generated.
+- `generate` returns `sampling.n` replies for each prompt.
+- These are the two capabilities of lm-evaluation-harness's model interface (`loglikelihood` and `generate_until`), so anyone who has wrapped a model for it knows the shape.
+- `ca.ToyModel` is a compatible wrapper that follows fixed rules: known answers, no model and no weights behind it. It is for tests and a first try.
 
 ## 4. Responses and labels
 
@@ -184,12 +187,27 @@ The target turns the model's answers for one masked prompt into one number, the 
 | `ca.Choice(a, b)` | log p(`a`) − log p(`b`), each taken as the model's whole answer, for example `ca.Choice("True", "False")` | yes/no and multiple-choice questions | `score` |
 | `ca.Sampled(check, samples=4, sampling=None)` | the share of `samples` fresh replies to that prompt that the check labels negative; when the check returns numbers, their mean | the behaviour itself. The only target for a wrapper that can only generate | `generate` |
 
+As formulas, for a response of T tokens, where `lp_t` is what the wrapper's `score` returns for token t (§3):
+
+```
+LogProb, reduce="mean"      (lp_1 + … + lp_T) / T
+         reduce="sum"       lp_1 + … + lp_T  =  log p(the whole response | the masked prompt)
+         reduce="logodds"   log( p / (1 − p) ),  with p = exp(lp_1 + … + lp_T)
+Pooled(label)               the mean of LogProb over the responses with that label
+Contrast()                  Pooled("negative") − Pooled("positive")
+Choice(a, b)                the sum for a − the sum for b
+Sampled(check)              (replies the check labels negative) / (replies it labels at all),
+                            or the mean of the numbers the check returns
+```
+
+A response with a `span` (§2) counts only the tokens that overlap the span.
+
 Their settings:
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `response` (`LogProb`) | `None` | the id of the response to explain. `None` works when the prompt has exactly one |
-| `reduce` | `"mean"` | `"mean"`: log-probability per token, which does not favour short answers. `"sum"`: of the whole answer. `"logodds"`: the whole answer's odds, p against 1 − p, on a log scale (only needed to reproduce the ContextCite paper) |
+| `reduce` | `"mean"` | `"mean"`: log-probability per token, which does not favour short answers (the negative log-perplexity the SPEX paper uses, its §3). `"sum"`: of the whole answer. `"logodds"`: log(p / (1 − p)) of the whole answer's probability p, as the ContextCite paper uses |
 | `label` (`Pooled`) | `"negative"` | which responses to pool |
 | `samples` (`Sampled`) | 4 | fresh replies per masked prompt. More give less noise and cost more |
 | `sampling` (`Sampled`) | `None` | how the replies are sampled, a `ca.Sampling`. `None` means temperature 0.7, top_p 0.95, up to 256 tokens, seed 0 |
@@ -202,7 +220,7 @@ Which to use:
 
 ## 6. Settings
 
-[methods.md](methods.md) §3 lists every setting of `ca.explain` with its default and meaning: `method`, `budget`, `test_masks`, `seed`, `replace`, `noise_repeats`, `removal`, `cache` and `batch_size`. `ca.Run` takes the same ones except `cache` (a run keeps every answer in its own folder), and adds `sample` and `check` (§4, §8). Device, precision, chat template and server options are not settings of ContextAttr: they belong to your wrapper.
+[methods.md](methods.md) §4 lists every setting of `ca.explain` with its default and meaning: `method`, `budget`, `test_masks`, `seed`, `replace`, `noise_repeats`, `removal`, `cache` and `batch_size`. `ca.Run` takes the same ones except `cache` (a run keeps every answer in its own folder), and adds `sample` and `check` (§4, §8). Device, precision, chat template and server options are not settings of ContextAttr: they belong to your wrapper.
 
 How a unit is removed:
 
@@ -211,15 +229,15 @@ How a unit is removed:
 | `None` (the default) | deleted, with its `sep` | always possible, with every model and API, and the text stays natural (ContextCite does this) |
 | a text, such as `"[UNK]"` | replaced by that text; its `sep` stays | you want to reproduce SPEX, which masks with `[UNK]` |
 
-A unit's own `replace` (§2) takes the place of the run's setting for that unit. Replacing can make a prompt longer than the original, since a placeholder may be several tokens.
+A unit's own `replace` (§2) takes the place of the run's setting for that unit. Replacing can make a prompt longer than the original, since a placeholder may be several tokens: the longest prompt is then the one with every unit replaced, so check that it still fits your model.
 
 ## 7. Cost and what is practical
 
-Requests per prompt = (the method's masks + the test masks) × (responses scored, or `samples` replies for `Sampled`), plus the noise repeats and, once, the samples of §4. A request carries about the masked prompt and one response: on your own hardware the time is tokens ÷ throughput, and on an API the cost is tokens × price. `run.plan()` counts all of this before any call, and `run.plan(measure=10)` also sends ten real requests, times them and projects the whole run (§8).
+Requests per prompt = (the method's masks + the test masks) × the responses scored, plus the noise repeats and, once, the samples of §4. A mask that comes up twice is asked once. For `Sampled`, a request is one masked prompt, and it generates `samples` replies. A request carries about the masked prompt and one response: on your own hardware the time is tokens ÷ throughput, and on an API the cost is tokens × price. `run.plan()` counts all of this before any call, and `run.plan(measure=10)` also sends ten real requests, times them and projects the whole run (§8).
 
 For example (measured with a transformers wrapper on one H100 GPU): Llama-3.2-3B-Instruct in bfloat16 scores 45,000 tokens per second at a batch of 16, which is 58 requests per second of 777 tokens each.
 
-Masks per prompt, by the number of units n ([methods.md](methods.md) §2):
+Masks per prompt, by the number of units n ([methods.md](methods.md) §3):
 
 | Method | Masks per prompt | n = 20 | n = 100 | n = 1,000 |
 |---|---|---|---|---|
@@ -234,8 +252,9 @@ For example (worked out, not measured): a prompt cut into 100 sentences, with 4 
 Suggestions:
 
 - Cost grows with masks × responses × prompt length. Use sentences or documents as units for long contexts, and words only for short texts.
-- `Sampled` targets are noisy: with 8 replies a share can be off by about 0.18 by chance alone. Keep their budgets small, prefer a check that returns a number to a yes/no check, and confirm the result with `ca.intervene` on 64 or more replies.
-- Every answer of the model is cached in one file per run. An interrupted run continues, another method on the same masks reuses the answers, and nothing is paid for twice.
+- Screen many prompts with `contextcite` at 64 masks (`loo` when n is 20 or less). Run `spex` or `proxyspex` only on the prompts worth a closer look, with a scored target.
+- `Sampled` targets are noisy: a share p counted from k replies has a standard error of √(p(1 − p)/k), which is 0.18 for 8 replies and a share of one half. Keep their budgets small, prefer a check that returns a number to a yes/no check, and confirm the result with `ca.intervene` on 64 or more replies.
+- Every answer of the model is cached. A run keeps them in its folder, so an interrupted run continues and nothing is paid for twice. A run folder holds one method. With `ca.explain(..., cache=path)`, another method on the same prompt reuses the answers for the masks the two share, such as the test masks.
 
 ## 8. Runs: many prompts, and the command line
 
@@ -264,7 +283,7 @@ print(ca.intervene(e.prompt, model, ca.checks.regex(r"\bwinter\b"), [u for u, _ 
 | `target` | `None` | a target of §5. `None` chooses for each prompt by its responses: `Contrast` when both labels are there, `Pooled` with one label, `LogProb` for a single response |
 | `sample` | `None` | a `ca.Sampling`: that many replies of the model are added to each prompt's responses first (§4) |
 | `check` | `None` | labels the sampled replies (§4) |
-| `method`, `budget`, `test_masks`, `seed`, `replace`, `batch_size`, `noise_repeats`, `removal` | as for `ca.explain` | [methods.md](methods.md) §3 |
+| `method`, `budget`, `test_masks`, `seed`, `replace`, `batch_size`, `noise_repeats`, `removal` | as for `ca.explain` | [methods.md](methods.md) §4 |
 
 | Call | Gives |
 |---|---|

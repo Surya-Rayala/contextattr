@@ -4,7 +4,7 @@ Find out which parts of a prompt make a language model give an answer.
 
 You split a prompt into parts: sentences, documents, words, or any pieces you choose. ContextAttr asks your model about many copies of the prompt with some parts removed. It then tells you how much each part, and each small group of parts working together, pushes the model towards an answer, and how far to trust that result. It works with any model, wherever it runs: you connect yours with a short wrapper.
 
-Version 0.1.0 is an early release: the interface may still change.
+Version 0.1 is an early release: the interface may still change.
 
 ## Install
 
@@ -62,7 +62,13 @@ rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · nois
 - Then each part with its score, highest first. A positive score pushes the model towards the unwanted answer: `d3`, the sentence about winter, is what makes this model say "cold". A negative score pushes it away: `d2` protects against it. A score near zero means the part hardly matters.
 - `e.scores` gives the scores as a dictionary, and `e.to_html("report.html")` writes a page with each part shaded by its score.
 
-[Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) shows the output of every method on this example and what its scores mean.
+**How the scores are computed:**
+
+1. A *mask* is one choice of parts to keep. For each mask, ContextAttr builds the prompt with only those parts and reads one number from your model, the *value*. With `ca.Contrast()` it is the mean log-probability per token that the model gives the unwanted answers, minus the same for the wanted answers.
+2. The method chooses which masks to ask about, and fits a simple formula to their values: a base number, plus one score for each part that is kept. Those scores are what is printed. Methods such as `spex` add a term for each set of parts that matters together.
+3. The formula is then tested on test masks, drawn separately. On a long prompt these are masks the method did not ask about; on one this short they are the same 8 masks. R² says how well the formula gives the model's values there.
+
+[Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) shows the output of every method on this example and what its scores mean. [Methods and settings](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md), section 2, gives each method's computation in full.
 
 ## Use it with your own model
 
@@ -87,7 +93,7 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 - **Where it runs.** ContextAttr itself runs on the CPU and needs no GPU. Your model runs wherever your wrapper puts it: a CPU, a GPU, a server or an API. The calls to the model are nearly all of the cost.
 - **Read R² first.** When it is low, [Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md), section 6, says what that means and what to try.
 - **Improve a prompt.** Give several wanted and several unwanted answers, find the part that pushes towards the unwanted ones, change it, and measure again. Section 9 of the same guide works through an example.
-- **Pick the method by the size of the prompt.** [Methods and settings](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md), section 1, says in plain words how each method works and what it needs.
+- **Pick the method by the size of the prompt.** [Methods and settings](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md), section 1, says what each method's score is and when to use it. Section 2 gives the computation: which copies of the prompt each method asks about, how it weighs them, and the formula it fits.
 
 ## Learn more
 
@@ -95,7 +101,7 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 |---|---|
 | [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) | connecting your model: what to write, two complete wrappers, the rules, and what to do when the check fails |
 | [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, how far to trust them, and how to get from scores to a better prompt |
-| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | how each method works, which to use, how many masks to give it, and every setting with its default |
+| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how each one computes its scores (masks, weights and formulas), how many masks to give it, and every setting with its default |
 | [docs/interface.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |
 
 ## Licence
