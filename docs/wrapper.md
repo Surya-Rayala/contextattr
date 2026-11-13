@@ -1,8 +1,8 @@
 # Writing a wrapper
 
-ContextAttr never talks to a model itself. It hands prompts to a small class that you write, the *wrapper*, and your class calls the model: in your own Python process, on your server, or through an API. A wrapper is usually 20 to 50 lines, and `check_model` tells you whether yours is right before you spend anything on a run. In all the docs, `ca` is the package: `import contextattr as ca`.
+ContextAttr never talks to a model itself. It hands prompts to a small class that you write, the *wrapper*, and your class calls the model: in your own Python process, or on a server. A wrapper is usually 20 to 50 lines, and `check_model` tells you whether yours is right before you spend anything on a run. In all the docs, `ca` is the package: `import contextattr as ca`.
 
-**The short way.** If your model answers through an OpenAI-style API, copy the wrapper of section 5. If it is a Hugging Face model that you run yourself, copy the one of section 6. Put in your model's name, run the file, and it tells you whether it works. The other sections explain what those two wrappers do, for when yours has to differ.
+**The short way.** If you run a Hugging Face model yourself, copy the wrapper of section 5, put in your model's name and run the file: it tells you whether it works. If your model runs behind a server or a service, section 6 gives the recipe. The other sections explain what a wrapper does, for when yours has to differ.
 
 ## 1. What a wrapper is
 
@@ -10,43 +10,43 @@ ContextAttr never talks to a model itself. It hands prompts to a small class tha
 class MyModel:
     name = "my-model"                          # every answer is cached under this name
 
-    def generate(self, prompts, sampling):     # writes replies to each prompt
+    def score(self, prompts, responses):       # says how likely a given reply is
         ...
 
-    def score(self, prompts, responses):       # says how likely a given reply is
+    def generate(self, prompts, sampling):     # optional: writes replies to each prompt
         ...
 ```
 
-It needs `name` and at least one of the two methods. Which ones you write decides what you can explain (the *target*: [interface.md](interface.md) §5):
+A wrapper needs a `name` and `score`. `generate` is optional.
 
-| Method | What it does | What you can explain with it | Which models can |
-|---|---|---|---|
-| `generate` | writes replies to a prompt | how often the model behaves in some way: `ca.Sampled(check)` | every model and API |
-| `score` | says how likely the model finds a reply that you supply: a log-probability for each of its tokens | why the model gives one answer, or one kind of answer and not another: `ca.LogProb`, `ca.Pooled`, `ca.Contrast`, `ca.Choice` | only backends (the software or service that runs the model) that return log-probabilities of text you give them |
+| Method | What it does | What it is for |
+|---|---|---|
+| `score` | says how likely the model finds a reply that you supply: a log-probability for each of its tokens | explaining why the model gives one answer, or one kind of answer and not another. The targets `ca.LogProb`, `ca.Pooled`, `ca.Contrast` and `ca.Choice` read it ([interface.md](interface.md) §5) |
+| `generate` | writes replies to a prompt | the model's own answers: collecting them to explain (`ca.sample`), counting how often they do something (`ca.Sampled`), and confirming a result by asking again (`ca.intervene`) |
 
 A *log-probability* says how likely the model finds a text: 0 is certain, and the more negative, the less likely. A *token* is the piece of text a model reads at a time, about a word.
 
-Write `score` if your backend can do it: it costs one pass over the prompt with nothing generated, and it gives the same number every time. Write both where you can: `generate` also gives you the model's own answers to explain (`ca.sample`).
+`score` costs one pass over the prompt with nothing generated, and it gives the same number every time.
 
-## 2. What your backend can do
+## 2. What the model has to give
 
-| Where the model runs | `generate` | `score` |
+`score` needs one thing from the model: the log-probability of each token of an answer that you supply, read after a prompt. Any model whose log-probabilities you can read can give this, wherever it runs. They come in one of three forms:
+
+| What you can read | How `score` uses it | Cost for an answer of T tokens |
 |---|---|---|
-| in your own process: transformers or any framework, on a GPU, a CPU or Apple MPS | yes | yes |
-| a vLLM server | yes | yes: `prompt_logprobs` on its chat and completions endpoints. Each response to a prompt costs a full pass over it, even with prefix caching |
-| an SGLang server | yes | yes: `return_logprob` with `logprob_start_len` inside the prompt (the default gives generated tokens only) |
-| AWS Bedrock, a model brought in with Custom Model Import | yes | yes: `InvokeModel` with `return_logprobs` returns the prompt's log-probabilities |
-| AWS Bedrock's own models through `Converse` | yes | no: the API has no log-probability field |
-| AWS SageMaker or another managed endpoint | yes | whatever its serving container exposes |
-| the OpenAI and Gemini APIs | yes | no: log-probabilities of generated tokens only |
-| the Anthropic API | yes | no: it gives no log-probabilities |
+| the log-probability of every token of a text you send | send the prompt followed by the answer, and keep the numbers of the answer's tokens | one pass of the model, or one request |
+| for the next token, the log-probabilities of the whole vocabulary | go through the answer token by token: send the prompt and the answer so far, and read the number of the answer's next token | T requests |
+| for the next token, only the n most likely tokens with their log-probabilities (top n) | the same, as long as each token of the answer is among the n. When one is not, raise an error: never put a guess in its place | T requests |
 
-As found on 2026-11-05, from each service's documentation (for Gemini and Anthropic, from their client libraries and users' reports). Services change, so check yours.
+- **A model in your own process** gives the first form: one pass returns the whole vocabulary at every position (section 5).
+- **A server or a service** gives whichever form its interface offers (section 6).
+- **In every form** you must be able to send the text exactly as the model reads it: the prompt in the model's own chat format, with the answer placed where the model's reply begins. An interface that only takes chat messages and writes its own reply cannot place the answer.
+- **Top n is the weakest form.** It is enough for short answers that stay likely, such as `ca.Choice("True", "False")`. When a removed part makes the answer unlikely, its token is no longer among the n, and the run stops with your error. Use one of the first two forms when you have the choice.
 
 ## 3. The steps
 
 1. **Get the file to fill in.** `contextattr template my_wrapper.py` writes it.
-2. **Fill it in.** Sections 4 to 6 show what goes in each method, with two complete wrappers to copy from.
+2. **Fill it in.** Sections 4 to 6 show what goes in each method, with a complete wrapper to copy from.
 3. **Check the wrapper** (below).
 4. **Check the results.** `contextattr demo my_wrapper.py:MyModel` explains three prompts with planted facts, where the right result is known (section 10).
 5. **Use it** (section 9).
@@ -88,6 +88,21 @@ Both get `prompts`, a list. Each prompt is one of:
 
 The prompts are already masked: ContextAttr has removed the parts it is testing. Your wrapper only passes each prompt on in the form your model expects.
 
+**`score(prompts, responses)`** gets one response (a string) per prompt and returns one `ca.Scored` per pair. For a response the model reads as three tokens:
+
+```python
+[ca.Scored(logprobs=[-0.21, -1.35, -0.08])]
+```
+
+Each number is the natural-log probability the model gives that token of the response, given the prompt and the response's earlier tokens: `log p(token t | prompt, tokens 1 to t − 1)`. Their sum is the log-probability of the whole response after that prompt, and their mean is what the default target explains ([interface.md](interface.md) §5). To get them:
+
+1. Format the prompt as your model expects. A chat model wants each message wrapped in its own marker tokens: its *chat template*.
+2. Put the response where the model's reply would begin.
+3. Run the model once and read off the probability of each response token. Nothing is generated.
+4. Do not count the marker that closes the reply (the end-of-turn token).
+
+Optional: `ca.Scored(logprobs, tokens)` also carries the text of each token. The texts must join back to the response exactly. With them, a target can cover only part of a response (a `span`).
+
 **`generate(prompts, sampling)`** returns one list per prompt, holding exactly `sampling.n` replies. A reply is the text the model wrote and nothing else. For two prompts and `sampling.n == 1`:
 
 ```python
@@ -105,59 +120,7 @@ The prompts are already masked: ContextAttr has removed the parts it is testing.
 | `seed` | 0 | the same seed should give the same replies; `None` means no seed |
 | `stop` | `()` | strings that end a reply; the reply does not include them |
 
-**`score(prompts, responses)`** gets one response (a string) per prompt and returns one `ca.Scored` per pair. For a response the model reads as three tokens:
-
-```python
-[ca.Scored(logprobs=[-0.21, -1.35, -0.08])]
-```
-
-Each number is the natural-log probability the model gives that token of the response, given the prompt and the response's earlier tokens: `log p(token t | prompt, tokens 1 to t − 1)`. Their sum is the log-probability of the whole response after that prompt, and their mean is what the default target explains ([interface.md](interface.md) §5). To get them:
-
-1. Format the prompt as your model expects. A chat model wants each message wrapped in its own marker tokens: its *chat template*.
-2. Put the response where the model's reply would begin.
-3. Run the model once and read off the probability of each response token. Nothing is generated.
-4. Do not count the marker that closes the reply (the end-of-turn token).
-
-Optional: `ca.Scored(logprobs, tokens)` also carries the text of each token. The texts must join back to the response exactly. With them, a target can cover only part of a response (a `span`).
-
-## 5. A complete wrapper for an API: `generate`
-
-This one works with every service that speaks the OpenAI chat API: OpenAI itself, and vLLM, Ollama, llama.cpp and many hosted services through `base_url`. For another API, change only the request in `reply`.
-
-```python
-from concurrent.futures import ThreadPoolExecutor
-
-from openai import OpenAI
-
-import contextattr as ca
-
-
-class ChatAPI:
-    def __init__(self, model, **client_options):
-        self.name = model                            # the model's id: use a dated one where the service has them
-        self.client = OpenAI(**client_options)       # base_url="http://localhost:8000/v1" for your own server
-
-    def reply(self, prompt, sampling):
-        messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": prompt}]
-        answer = self.client.chat.completions.create(
-            model=self.name, messages=messages, n=sampling.n, temperature=sampling.temperature,
-            top_p=sampling.top_p, max_tokens=sampling.max_tokens, seed=sampling.seed,
-            stop=list(sampling.stop) or None)
-        return [choice.message.content or "" for choice in answer.choices]
-
-    def generate(self, prompts, sampling):
-        with ThreadPoolExecutor(max_workers=8) as pool:           # the prompts of one call, eight at a time
-            return list(pool.map(lambda prompt: self.reply(prompt, sampling), prompts))
-
-
-if __name__ == "__main__":
-    print(ca.check_model(ChatAPI("your-model-id")))
-```
-
-- Services differ in the options they accept. OpenAI's newer models take `max_completion_tokens` in place of `max_tokens`, and some servers return one reply whatever `n` says: `check_model` then fails on `generate`, and the fix is to call the service `sampling.n` times.
-- The API key is read by the client from its usual environment variable. Keep it out of the wrapper file.
-
-## 6. A complete wrapper for a model in your own process: `score` and `generate`
+## 5. A complete wrapper for a model in your own process
 
 This one runs a Hugging Face model with transformers, one prompt at a time: the simplest version that is correct.
 
@@ -223,6 +186,66 @@ if __name__ == "__main__":
 - **The model's own generation settings.** `model.generate` also applies whatever the model's `generation_config` sets, such as a repetition penalty. Replace that config if you want only `sampling` to decide.
 - **Prompts that change by the day.** Llama 3's chat template writes today's date into every prompt. Pass a fixed `date_string="..."` to `apply_chat_template`, or cached answers from yesterday no longer match today's prompts.
 
+## 6. A model behind a server or a service
+
+The wrapper is the same; only the way to the log-probabilities differs. Fill in the functions marked *yours* with your server's own calls. What follows them is complete.
+
+```python
+import contextattr as ca
+
+
+class ServerModel:
+    name = "my-model@my-server"                  # change it whenever the answers could change
+
+    def as_text(self, prompt):
+        """Yours: the prompt as the model reads it, up to where its reply begins (the model's chat format)."""
+        raise NotImplementedError
+
+    def token_logprobs(self, text):
+        """Yours: send the text, and return the log-probability of each of its tokens, in order."""
+        raise NotImplementedError
+
+    def score(self, prompts, responses):
+        out = []
+        for prompt, response in zip(prompts, responses):
+            before = self.as_text(prompt)
+            in_prompt = len(self.token_logprobs(before))             # how many tokens the prompt takes
+            out.append(ca.Scored(self.token_logprobs(before + response)[in_prompt:]))
+        return out
+```
+
+- **`as_text`.** With the model's own tokenizer from Hugging Face, it is `tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)` for chat messages. A prompt that is a plain string is sent as it is.
+- **Counting the prompt's tokens.** `score` sends the prompt alone to count them. If your server can count tokens without running the model, use that: it saves half of the requests.
+- **Where the prompt ends.** The count is right when the prompt's text ends where a token ends. The marker that opens the model's reply in a chat format ensures that.
+- **`generate`**, if you want it: call your server's own generation, and return `sampling.n` replies for each prompt (section 4).
+- Keys, addresses and retries belong to your server's client. Keep keys out of the wrapper file.
+
+**If the server returns the candidates for the next token** (the whole vocabulary, or the top n), go through the response token by token:
+
+```python
+class StepModel(ServerModel):
+    def tokens_of(self, response):
+        """Yours: the response's text, cut into tokens by the model's tokenizer."""
+        raise NotImplementedError
+
+    def next_token_logprobs(self, text):
+        """Yours: send the text, and return the candidates for the next token as {token text: log-probability}."""
+        raise NotImplementedError
+
+    def score(self, prompts, responses):
+        out = []
+        for prompt, response in zip(prompts, responses):
+            logprobs, so_far = [], self.as_text(prompt)
+            for token in self.tokens_of(response):
+                candidates = self.next_token_logprobs(so_far)
+                if token not in candidates:              # top n, and this token is not among them
+                    raise ValueError(f"no log-probability for {token!r} among the {len(candidates)} tokens returned")
+                logprobs.append(candidates[token])
+                so_far += token
+            out.append(ca.Scored(logprobs))
+        return out
+```
+
 ## 7. The rules
 
 | Rule | Why |
@@ -230,10 +253,10 @@ if __name__ == "__main__":
 | Change `name` whenever the answers could change: another model, revision, precision or prompt format | every cached answer is stored under the name |
 | Apply your model's own chat template and its way of handling a system prompt | ContextAttr does not know any model's format |
 | `score`: put the response right where the model's reply begins, and return one log-probability per response token, without the end-of-turn token | the number explained is the likelihood of that response |
-| `generate`: return exactly `sampling.n` replies per prompt, the reply's text only, and honour `temperature`, `top_p`, `max_tokens`, `stop` and `seed` where your backend can | `check_model` reports what is not honoured |
+| `generate`: return exactly `sampling.n` replies per prompt, the reply's text only, and honour `temperature`, `top_p`, `max_tokens`, `stop` and `seed` where your model's software can | `check_model` reports what is not honoured |
 | A call gets up to `batch_size` prompts (32 unless you set it): run them however is fastest, as one GPU batch or as concurrent requests | ContextAttr sends all of a method's prompts at once |
 | Raise an error on a failure and on a prompt that is too long. Never cut a prompt short | a shortened prompt is a different prompt, and its score would be wrong without any sign |
-| Retries and rate limits are the wrapper's job (most API clients already retry) | every answer is cached, so an interrupted run continues where it stopped |
+| Retries and rate limits are the wrapper's job (most clients of a server already retry) | every answer is cached, so an interrupted run continues where it stopped |
 
 ## 8. When `check_model` says FAIL
 
@@ -258,8 +281,8 @@ import contextattr as ca
 from my_wrapper import MyModel
 
 model = MyModel()
-e = ca.explain(prompt, model, ca.Contrast())                                # needs score
-e = ca.explain(prompt, model, ca.Sampled(ca.checks.regex(r"\bcold\b")))     # needs only generate
+e = ca.explain(prompt, model, ca.Contrast())                                # reads log-probabilities: needs score
+e = ca.explain(prompt, model, ca.Sampled(ca.checks.regex(r"\bcold\b")))     # counts replies: needs generate
 ```
 
 On the command line, the run file names the wrapper by its file and class, and `args` are passed to it:
@@ -291,7 +314,7 @@ from my_model import LocalModel               # the wrapper of section 6, saved 
 ca.demo(LocalModel("Qwen/Qwen2.5-0.5B-Instruct", dtype=torch.float32), cache="demo.sqlite")
 ```
 
-**What it asks of the model.** Three cases of 8 documents each. A wrapper that scores is asked about every combination of the documents: 1,024 prompts to score (seconds on a GPU, minutes on a CPU), and five short replies if it can also generate. A wrapper that can only generate gets the first case alone, by counting replies: about 80 short ones. With `cache=`, a second run asks nothing.
+**What it asks of the model.** Three cases of 8 documents each. The wrapper is asked about every combination of the documents: 1,024 prompts to score (seconds on a GPU, minutes on a CPU), and five short replies if it can also generate. With `cache=`, a second run asks nothing.
 
 **What you should see, and why:**
 

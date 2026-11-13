@@ -172,7 +172,7 @@ def main(argv=None) -> int:
         except FileExistsError:
             print(f"contextattr template: {args.file} exists; give another name", file=sys.stderr)
             return 1
-        print(f"wrote {args.file}: fill in score and/or generate, then run it (python {args.file}) to check it")
+        print(f"wrote {args.file}: fill in score (and generate, if you want the model's own replies), then run it (python {args.file}) to check it")
         return 0
     if args.command == "plan":
         r, _ = load(args.config)

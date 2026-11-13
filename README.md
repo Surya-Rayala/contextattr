@@ -2,7 +2,7 @@
 
 Find out which parts of a prompt make a language model give an answer.
 
-You split a prompt into parts: sentences, documents, words, or any pieces you choose. ContextAttr asks your model about many copies of the prompt with some parts removed. It then tells you how much each part, and each small group of parts working together, pushes the model towards an answer, and how far to trust that result. It works with any model, wherever it runs: you connect yours with a short wrapper.
+You split a prompt into parts: sentences, documents, words, or any pieces you choose. ContextAttr asks your model about many copies of the prompt with some parts removed. It then tells you how much each part, and each small group of parts working together, pushes the model towards an answer, and how far to trust that result. It works with any model whose log-probabilities you can read, wherever it runs: you connect yours with a short wrapper.
 
 Version 0.1 is an early release: the interface may still change.
 
@@ -72,11 +72,11 @@ rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · nois
 
 ## Use it with your own model
 
-ContextAttr reaches your model through a small class that you write, a *wrapper*. [Writing a wrapper](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) is the guide, with two complete wrappers to copy from: one for an API and one for a model you run yourself.
+ContextAttr reaches your model through a small class that you write, a *wrapper*. [Writing a wrapper](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) is the guide, with a complete wrapper for a model you run yourself and the recipe for a model behind a server.
 
-1. **Get the file to fill in.** `contextattr template my_wrapper.py` writes it. It needs one or both of:
-   - `generate`: writes replies to a prompt. Every model can do this, including the OpenAI, Gemini and Anthropic APIs.
-   - `score`: says how likely the model finds an answer you give it (a log-probability for each token, the pieces of text a model reads). Possible when you run the model yourself, in your own code or on a vLLM or SGLang server.
+1. **Get the file to fill in.** `contextattr template my_wrapper.py` writes it. You fill in:
+   - `score`: says how likely the model finds an answer you give it: a log-probability for each token (the pieces of text a model reads). Any model whose log-probabilities you can read can do this, in your own code or behind a server.
+   - `generate`, optional: writes replies to a prompt. It is for explaining the model's own answers.
 2. **Check it.** `python my_wrapper.py` runs `ca.check_model` on it and says what, if anything, is wrong.
 3. **Check the results.** `contextattr demo my_wrapper.py:MyModel` explains three prompts with planted facts, where the right result is known, and says whether your model's results agree. `contextattr demo` alone shows it on the stand-in.
 4. **Use it.** Put your wrapper where the example has `model`.
@@ -84,13 +84,13 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 ## Choose what to explain, and how
 
 - **Parts:** mark them with `ca.Unit`, as above, or cut a text automatically: `ca.split(text, "sentence", id="s")` (or `"word"`, `"line"`, `"paragraph"`).
-- **Answer:** `ca.LogProb()` explains one answer. `ca.Contrast()` explains what moves the model from the answers you want to the ones you don't. `ca.Sampled(check)` is the one to use when your model can only generate text: with the check `ca.checks.regex(r"\bcold\b")` it counts how often the replies say "cold".
+- **Answer:** `ca.LogProb()` explains one answer. `ca.Contrast()` explains what moves the model from the answers you want to the ones you don't. `ca.Sampled(check)` counts how often the model's own replies do something: with the check `ca.checks.regex(r"\bcold\b")`, how often they say "cold".
 - **Method:** `contextcite`, the default, takes a quick and cheap look, even at long prompts. `spex` finds parts that matter only together. `budget` sets how many copies of the prompt the model is asked about: more is steadier and costs more.
 - **Many prompts:** `contextattr run run.toml` explains a whole file of prompts and writes a report.
 
 ## Notes for good results
 
-- **Where it runs.** ContextAttr itself runs on the CPU and needs no GPU. Your model runs wherever your wrapper puts it: a CPU, a GPU, a server or an API. The calls to the model are nearly all of the cost.
+- **Where it runs.** ContextAttr itself runs on the CPU and needs no GPU. Your model runs wherever your wrapper puts it: a CPU, a GPU or a server. The calls to the model are nearly all of the cost.
 - **Read R² first.** When it is low, [Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md), section 6, says what that means and what to try.
 - **Improve a prompt.** Give several wanted and several unwanted answers, find the part that pushes towards the unwanted ones, change it, and measure again. Section 9 of the same guide works through an example.
 - **Pick the method by the size of the prompt.** [Methods and settings](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md), section 1, says what each method's score is and when to use it. Section 2 gives the computation: which copies of the prompt each method asks about, how it weighs them, and the formula it fits.
@@ -99,7 +99,7 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 
 | Document | Covers |
 |---|---|
-| [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) | connecting your model: what to write, two complete wrappers, the rules, and what to do when the check fails |
+| [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) | connecting your model: what the model has to give, a complete wrapper, the recipe for a model behind a server, the rules, and what to do when the check fails |
 | [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, how far to trust them, and how to get from scores to a better prompt |
 | [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how each one computes its scores (masks, weights and formulas), how many masks to give it, and every setting with its default |
 | [docs/interface.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |

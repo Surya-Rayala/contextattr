@@ -122,7 +122,7 @@ The same prompt (shown on several lines here; in the file it is one line). `ca.r
 
 ## 3. The model wrapper, written by the user
 
-ContextAttr ships no wrapper for any model or service: writing one is the user's job, and everything after it is the package's. [wrapper.md](wrapper.md) is the guide: what to write, two complete wrappers to copy from, the rules a wrapper keeps, and which backends can score. In short, a wrapper is any object with a `name` and at least one of two methods:
+ContextAttr ships no wrapper for any model or service: writing one is the user's job, and everything after it is the package's. [wrapper.md](wrapper.md) is the guide: what the model has to give, a complete wrapper to copy from, the recipe for a model behind a server, and the rules a wrapper keeps. In short, a wrapper is an object with a `name`, a `score` method and, optionally, a `generate` method:
 
 ```python
 Rendered = str | list[dict]    # a masked prompt as it reaches the wrapper: plain text, or chat messages
@@ -185,7 +185,7 @@ The target turns the model's answers for one masked prompt into one number, the 
 | `ca.Pooled(label="negative", reduce="mean")` | the mean `LogProb` of all the responses with that label | what produces the negative (or positive) answers as a group | `score` |
 | `ca.Contrast(reduce="mean")` | `Pooled("negative")` − `Pooled("positive")` | what moves the model from the answers you want to the ones you do not | `score` |
 | `ca.Choice(a, b)` | log p(`a`) − log p(`b`), each taken as the model's whole answer, for example `ca.Choice("True", "False")` | yes/no and multiple-choice questions | `score` |
-| `ca.Sampled(check, samples=4, sampling=None)` | the share of `samples` fresh replies to that prompt that the check labels negative; when the check returns numbers, their mean | the behaviour itself. The only target for a wrapper that can only generate | `generate` |
+| `ca.Sampled(check, samples=4, sampling=None)` | the share of `samples` fresh replies to that prompt that the check labels negative; when the check returns numbers, their mean | the behaviour itself: how often the model's own replies do something | `generate` |
 
 As formulas, for a response of T tokens, where `lp_t` is what the wrapper's `score` returns for token t (§3):
 
@@ -214,7 +214,7 @@ Their settings:
 
 Which to use:
 
-- Scored targets (the first four) cost one pass over prompt and response per mask, generate nothing, and give the same number every time. Use them wherever your wrapper can `score`.
+- Scored targets (the first four) cost one pass over prompt and response per mask, generate nothing, and give the same number every time. They are the ones to use by default.
 - Use `Contrast` whenever you have both labels. Removing context tends to make every answer less likely, so the `LogProb` of an unwanted answer alone mixes "needed for any answer" with "pushes towards the unwanted one". The difference cancels what the two share.
 - `Sampled` costs `samples` generations per mask and is noisy (§7). Keep its budget small and confirm the result with `ca.intervene` ([results.md](results.md) §8).
 
@@ -226,14 +226,14 @@ How a unit is removed:
 
 | `replace` | A removed unit is | Use it when |
 |---|---|---|
-| `None` (the default) | deleted, with its `sep` | always possible, with every model and API, and the text stays natural (ContextCite does this) |
+| `None` (the default) | deleted, with its `sep` | always possible, with every model, and the text stays natural (ContextCite does this) |
 | a text, such as `"[UNK]"` | replaced by that text; its `sep` stays | you want to reproduce SPEX, which masks with `[UNK]` |
 
 A unit's own `replace` (§2) takes the place of the run's setting for that unit. Replacing can make a prompt longer than the original, since a placeholder may be several tokens: the longest prompt is then the one with every unit replaced, so check that it still fits your model.
 
 ## 7. Cost and what is practical
 
-Requests per prompt = (the method's masks + the test masks) × the responses scored, plus the noise repeats and, once, the samples of §4. A mask that comes up twice is asked once. For `Sampled`, a request is one masked prompt, and it generates `samples` replies. A request carries about the masked prompt and one response: on your own hardware the time is tokens ÷ throughput, and on an API the cost is tokens × price. `run.plan()` counts all of this before any call, and `run.plan(measure=10)` also sends ten real requests, times them and projects the whole run (§8).
+Requests per prompt = (the method's masks + the test masks) × the responses scored, plus the noise repeats and, once, the samples of §4. A mask that comes up twice is asked once. For `Sampled`, a request is one masked prompt, and it generates `samples` replies. A request carries about the masked prompt and one response: on your own hardware the time is tokens ÷ throughput, and on a paid service the cost is tokens × price. `run.plan()` counts all of this before any call, and `run.plan(measure=10)` also sends ten real requests, times them and projects the whole run (§8).
 
 For example (measured with a transformers wrapper on one H100 GPU): Llama-3.2-3B-Instruct in bfloat16 scores 45,000 tokens per second at a batch of 16, which is 58 requests per second of 777 tokens each.
 
@@ -267,7 +267,7 @@ print(ca.check_model(model))              # what it supports, before any run
 run = ca.Run(model, ca.read_prompts("prompts.jsonl"),
              sample=ca.Sampling(n=8, temperature=0.7),             # 8 replies of the model to each full prompt
              check=ca.checks.regex(r"\bwinter\b", negative=True),  # labels them: negative if they say "winter"
-             target=ca.Contrast(),                                 # ca.Sampled(check, samples=4) if the model can only generate
+             target=ca.Contrast(),                                 # what is explained (§5)
              method="contextcite", budget=64)
 print(run.plan())                         # masks, requests and tokens, counted before any call
 results = run.execute("runs/rio")         # explains every prompt into the folder runs/rio

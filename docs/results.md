@@ -278,7 +278,7 @@ Rem   = | f(full prompt) − f(prompt without the units) | / | f(full prompt) |
 **When R² is low.** A real model gives less than this toy example: with Llama-3.2-3B-Instruct on a prompt of 20 documents, R² was between 0.81 and 0.99, depending on the method. Well below that, try these in order:
 
 1. **More masks.** Double `budget` and see whether R² rises. On the 12-sentence prompt of section 5, `lime` has R² 0.49 with 16 masks, 0.95 with 64 and 0.99 with 128.
-2. **A steadier value.** If the noise in the first line is above 0, or the target is `ca.Sampled`, the values themselves are shaky. Raise `samples`, or use a scored target if your wrapper can score.
+2. **A steadier value.** If the noise in the first line is above 0, or the target is `ca.Sampled`, the values themselves are shaky. Raise `samples`, or use a scored target.
 3. **A method that scores units together.** With one score per unit, R² stays low when units matter only together. On a real model (Qwen2.5-0.5B-Instruct, the three sentences of section 1), `kernelshap` had R² 0.73 and `spex` 1.00.
 4. **The right method for the size.** `proxyspex` needs 8 units or more: with 6 or 7 it finds less than is there ([methods.md](methods.md) §3). `loo` and `lime` often have a lower R² than the others, as in sections 4 and 5, even when their order of the units is right.
 
@@ -313,9 +313,9 @@ Each row names the units whose removal changes the result most, and how far the 
 | `e.to_html(path)` | a page showing the prompt with each unit shaded by its score |
 | `e.as_dict()` | everything above as a dictionary, to save as JSON; `ca.Explanation.from_dict` reads it back |
 
-## 8. When the model can only generate: `ca.Sampled`
+## 8. Counting replies: `ca.Sampled`
 
-With a wrapper that has no `score`, the value is counted from replies. `ca.Sampled(check, samples=8)` asks for 8 fresh replies to each masked prompt and takes the share of them that the check flags:
+The value can also be counted from what the model writes, through the wrapper's `generate`. `ca.Sampled(check, samples=8)` asks for 8 fresh replies to each masked prompt and takes the share of them that the check flags:
 
 ```python
 cold = ca.checks.regex(r"\bcold\b")          # a check: flags a reply that says "cold"

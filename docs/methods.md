@@ -279,7 +279,7 @@ Two other ways in take the same settings:
   - Sentiment: the methods come in the paper's order. R² is within 0.04 of the paper's on reviews of 8 to 15 words, and within 0.15 on longer ones.
   - HotpotQA: the methods come in the paper's order, but every R² is higher than the paper's (SPEX 0.95–0.98 against 0.60–0.87). The task was rebuilt from the paper's description, so those levels are not comparable.
   - The trolley prompt of the paper's section 7.1: the model is right more often without the last sentence, as in the paper, by a larger margin (from 21 % to 86 %, against 12 % to 21 %).
-- Where it has been run: Linux, with Python 3.12, 3.13 and 3.14. ContextAttr itself runs on the CPU and uses no GPU. The model has been run on a GPU (Llama-3.2-3B-Instruct) and on a CPU (Qwen2.5-0.5B-Instruct), each through a wrapper. Not tried: macOS, Windows, Apple MPS, and a real API service.
+- Where it has been run: Linux, with Python 3.12, 3.13 and 3.14. ContextAttr itself runs on the CPU and uses no GPU. The model has been run on a GPU (Llama-3.2-3B-Instruct) and on a CPU (Qwen2.5-0.5B-Instruct), each through a wrapper. Not tried: macOS, Windows, Apple MPS, and a model behind a remote server.
 
 ## References
 
