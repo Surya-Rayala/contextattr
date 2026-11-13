@@ -44,8 +44,9 @@ class MyModel:
         """Reply to each prompt.
 
         prompts    as for score.
-        sampling   .n replies per prompt, .temperature (0: always the most likely token), .top_p, .max_tokens,
-                   .seed, .stop.
+        sampling   .n replies per prompt: the one field you must honour. Also .temperature (0: always the most
+                   likely token), .top_p, .max_tokens, .seed and .stop: pass them on where your model's software
+                   supports them.
         return     one list per prompt, holding exactly sampling.n replies (the reply's text only).
                    For two prompts and n = 1: [["first reply"], ["second reply"]]
         """

@@ -6,6 +6,24 @@ You split a prompt into parts: sentences, documents, words, or any pieces you ch
 
 Version 0.1 is an early release: the interface may still change.
 
+## What you need
+
+| You bring | What it is |
+|---|---|
+| **A model** | an open-weight model that you run yourself or host on your own server, with a wrapper written for it (see below). ContextAttr reads the log-probabilities the model gives to answers, so the model must let you read them. To try the package first, a built-in stand-in needs no model |
+| **Prompts** | the prompts your model gets, as chat messages or plain text |
+| **A way to cut them into parts** | the pieces whose effect you want to know: documents, sentences, instructions, examples or words. You mark them yourself, or let `ca.split` cut a text |
+| **Answers** | replies the model could give, each labelled `negative` (an answer you do not want) or `positive` (one you want). You write them, or the model writes them and a check labels them |
+
+Which answers to give depends on what you want to improve:
+
+| You give | You learn | What to explain |
+|---|---|---|
+| unwanted answers only | which parts make the model likely to give them: what to remove or rewrite | `ca.Pooled("negative")` |
+| wanted answers only | which parts support them: what to keep | `ca.Pooled("positive")` |
+| both | which parts move the model from the wanted answers to the unwanted ones. This is the clearest result: prefer it whenever you have both | `ca.Contrast()` |
+| one answer, with no label | which parts support that answer | `ca.LogProb()` |
+
 ## Install
 
 ```
@@ -68,7 +86,7 @@ rio · KernelSHAP(paired=True) · 8 masks · R² 0.991 on 128 test masks · nois
 2. The method chooses which masks to ask about, and fits a simple formula to their values: a base number, plus one score for each part that is kept. Those scores are what is printed. Methods such as `spex` add a term for each set of parts that matters together.
 3. The formula is then tested on test masks, drawn separately. On a long prompt these are masks the method did not ask about; on one this short they are the same 8 masks. R² says how well the formula gives the model's values there.
 
-[Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) shows the output of every method on this example and what its scores mean. [Methods and settings](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md), section 2, gives each method's computation in full.
+[Reading a result](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) shows every method's scores on this example, what they mean, and how far to trust them. [Methods and settings](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md), section 2, gives each method's computation in full.
 
 ## Use it with your own model
 
@@ -100,8 +118,8 @@ ContextAttr reaches your model through a small class that you write, a *wrapper*
 | Document | Covers |
 |---|---|
 | [docs/wrapper.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md) | connecting your model: what the model has to give, a complete wrapper, the recipe for a model behind a server, the rules, and what to do when the check fails |
-| [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result: the output of every method on one example, what its scores mean, how far to trust them, and how to get from scores to a better prompt |
-| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how each one computes its scores (masks, weights and formulas), how many masks to give it, and every setting with its default |
+| [docs/results.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/results.md) | reading a result, kept short: every method's scores on one example, what they mean, how far to trust them, and how to get from scores to a better prompt |
+| [docs/methods.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/methods.md) | which method to use, how each one computes its scores (masks, weights and formulas, with a worked example), how many masks to give it, every setting with its default, and the references |
 | [docs/interface.md](https://github.com/Surya-Rayala/contextattr/blob/main/docs/interface.md) | the reference: prompts and the prompt file, answers and labels, what can be explained, costs, runs and the command line |
 
 ## Licence

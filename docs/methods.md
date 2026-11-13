@@ -11,8 +11,7 @@ Words used here (`ca` is the package: `import contextattr as ca`):
 | value (`f(m)`) | the number read from the model for the prompt with only the units that mask `m` keeps. The *target* decides which number ([interface.md](interface.md) §5) |
 | method | decides which masks to ask about, and works out the scores from their values |
 | budget | the number of masks a method may use for one prompt. Each mask costs model calls, so the budget is the cost |
-| surrogate (`f̂(m)`) | the formula a method fits to the values. Its numbers are the scores (section 2) |
-| R² | how well the surrogate predicts the value on test masks, drawn separately from the method's own (section 2): 1 is perfect, 0 or below means the scores should not be trusted ([results.md](results.md) §6 says what to do then) |
+| R² | how well the scores predict the value on test masks (section 2): 1 is perfect, 0 or below means the scores should not be trusted ([results.md](results.md) §6 says what to do then) |
 
 ## 1. Which method
 
@@ -50,41 +49,52 @@ with interactions:     f̂(m) = b + Σ_i w_i·m_i + Σ_S w_S·Π_{i in S} m_i
 | `b` | the base: what the surrogate predicts for the prompt with every unit removed |
 | `w_S` | the **interaction** of a set S of two or more units, printed as a `(together)` row. The product `Π_{i in S} m_i` is 1 only when every unit of S is kept, so `w_S` is added only then: what the units do together, beyond their own scores |
 
-*Least squares* means: choose `b` and the `w` that make the squared differences `(f(m) − f̂(m))²`, added up over the masks asked, as small as possible. The methods differ in which masks they ask about, how much each mask counts, and what they add to least squares:
-
-| Method | Masks asked | A mask counts | Fit | The surrogate has |
-|---|---|---|---|---|
-| `loo` | the full prompt, and each prompt with one unit removed | | none: plain differences | n scores |
-| `banzhaf` | coin flips: each unit kept with probability ½ | the same as any other | least squares | n scores |
-| `contextcite` | coin flips | the same | least squares with a charge on `Σ_i \|w_i\|` (a Lasso) | n scores, many exactly 0 |
-| `lime` | the full prompt, and masks with 1 to n units removed | more, the fewer units it removes | least squares with a charge on `Σ_i w_i²` (a ridge) | n scores |
-| `kernelshap` | those that keep very few or very many units first | by the Shapley kernel | least squares; the empty and the full prompt are fitted exactly | n scores |
-| `faithbanzhaf` | random masks, all different, with the empty and the full prompt | the same | ridge, or least squares when every mask was asked | n scores, and one for every set up to `max_order` units |
-| `faithshap` | those that keep very few or very many units first | by the Shapley kernel | least squares; the empty and the full prompt are fitted exactly | the same |
-| `spex` | built from an error-correcting code | | decoding: no fit over all sets | n scores, and one for each set it finds (up to `degree` units) |
-| `proxyspex` | random masks, all different, with the empty and the full prompt | the same | a tree model, then a ridge on the sets read off its trees | n scores, and one for each set it finds (up to `max_order` units) |
+*Least squares* means: choose `b` and the `w` that make the squared differences `(f(m) − f̂(m))²`, added up over the masks asked, as small as possible. The methods differ in three things, which the parts below give for each: which masks they ask about, how much each mask counts, and what they add to least squares.
 
 **Exact or estimated.** `loo` is always exact. `banzhaf` (up to 16 units), `kernelshap` and `faithbanzhaf` are exact when the budget covers every one of the 2ⁿ masks (`budget=2**n`): nothing is drawn at random and the result is the quantity itself. `faithshap` then agrees with the exact quantity to about five decimal places: it holds the empty and the full prompt by a very large weight, not exactly. With fewer masks each gives an estimate from a random sample, the same on every run with the same `seed`. `contextcite` and `lime` are never exact: their charge changes the scores whatever the number of masks.
 
-**How the fit is judged.** After the fit, the model is asked about `test_masks` test masks: coin flips, drawn separately from the method's own masks. The surrogate's predictions are compared with their values (SPEX eq. 7):
+**How a result is checked.** `f̂(m)` is what the scores predict for mask `m`.
 
 ```
-R² = 1 − Σ (f(m) − f̂(m))² / Σ (f(m) − f̄)²        f̄: the mean value over the test masks
+R²    = 1 − Σ (f(m) − f̂(m))² / Σ (f(m) − f̄)²        over the test masks; f̄ is their mean value
+noise = the standard deviation of the full prompt's value, asked noise_repeats + 1 times
+Rem   = | f(full prompt) − f(prompt without the units) | / | f(full prompt) |
 ```
 
-On a long prompt the test masks are masks the method did not ask about. On a short prompt some or all of them are masks it did ask about, since n units have only 2ⁿ masks. R² then says how well the formula describes the values, not how well it predicts new ones.
+- **R²** (SPEX eq. 7) compares the squared error of the predictions with that of always predicting the mean: at R² 0.9 the first is a tenth of the second. The test masks are coin flips, drawn separately from the method's own. On a long prompt they are masks the method did not ask about. On a short one some or all of them are masks it did ask about, since n units have only 2ⁿ masks: R² then says how well the formula describes the values, not how well it predicts new ones.
+- **The noise** is 0 for a model that always returns the same numbers. With `ca.Sampled` each asking draws fresh replies, so it is above 0.
+- **Rem** (SPEX eq. 8) belongs to `removal=`. The units removed are chosen from the scores alone: of all ways to remove that many units, the one for which the surrogate predicts the largest change, up or down. Every way is tried up to 20,000 of them; beyond that, one unit at a time.
 
-In the formulas below, `f(S)` is the value of the prompt that keeps exactly the units of the set S, and `S + i` is S with unit i added. [results.md](results.md) §4 works the first five methods out by hand on a prompt of three units.
+In the formulas below, `f(S)` is the value of the prompt that keeps exactly the units of the set S, and `S + i` is S with unit i added.
+
+### A worked example
+
+The example of [results.md](results.md) has three units. Its eight values (results.md §2) give the value without and with `d1`, for each combination of the other two:
+
+| The other units kept | Value without `d1` | Value with `d1` | Change when `d1` is added |
+|---|---|---|---|
+| neither | 0.000 | 0.000 | 0.000 |
+| only `d2` | −0.262 | −0.309 | −0.047 |
+| only `d3` | +0.250 | +0.250 | 0.000 |
+| both | −0.012 | −0.059 | −0.047 |
+
+`d1` changes the value only when `d2` is there. Each method turns these four changes into its numbers in its own way:
+
+- **`loo`** reads the last row alone, where all the other units are kept: −0.047. `d2` gets the same joint effect once more, so `loo` can count a joint effect twice.
+- **`banzhaf`** takes the plain mean of the four changes: (0 − 0.047 + 0 − 0.047) / 4 = −0.023. Half of the joint effect goes to `d1`, and the other half to `d2`.
+- **`kernelshap`** takes a weighted mean. The rows with neither and with both of the other units count 1/3 each, and the two rows between them 1/6 each: −0.047/6 − 0.047/3 = −0.023. Here that equals `banzhaf`, because the only joint effect is one of two units. Its three scores add up to the full prompt's value minus the empty prompt's: −0.0234 − 0.2854 + 0.2500 = −0.059 to three decimals.
+- **`contextcite` and `lime`** estimate such an average from 64 random masks, with a pull towards zero: −0.007 and −0.021.
+- **The interaction methods** give two numbers in place of one. `d1`'s own score is the first row, 0.000: what `d1` does with nothing else there. The pair's term is the change with `d2` there minus the change without it: −0.047 − 0.000 = −0.047.
 
 ### `loo`: leave one out
 
-- **Masks.** The full prompt and the n prompts that each lack one unit: n + 1 masks, nothing random. `budget` is not used.
+- **Masks.** The full prompt and the n prompts that each lack one unit: n + 1 masks, nothing random.
 - **The score.** `w_i = f(full prompt) − f(full prompt without unit i)`. There is no fit. The base is `b = f(full prompt) − Σ_i w_i`, so the surrogate gives these n + 1 values back exactly.
 - **What it means.** Each unit is tested only with all the others present. Two limits follow. When two units hold the same fact, removing either changes little, and both score near zero. When two units matter only together, removing either loses the whole joint effect, and both get all of it. For a mask that removes several units the surrogate adds up the single losses, which is why R² is often lower than for the other methods.
 
 ### `banzhaf`
 
-- **Masks.** `budget` masks. In each, every unit is kept or removed by a fair coin flip, so each of the 2ⁿ masks is equally likely. With `budget=2**n` or more (up to 16 units) it takes every mask once.
+- **Masks.** `budget` masks. In each, every unit is kept or removed by a fair coin flip, so each of the 2ⁿ masks is equally likely.
 - **The fit.** Least squares, every mask counting the same, nothing added.
 - **The score.** With every mask, the fit has a closed form, the Banzhaf value:
 
@@ -94,7 +104,6 @@ In the formulas below, `f(S)` is the value of the prompt that keeps exactly the 
   ```
 
 - **What it means.** The change in the value when unit i is added, averaged over every combination of the other units, each combination counting the same. A joint effect of k units is shared: each of them gets 1/2^(k−1) of it, so half each for a pair. With fewer masks the score is the least-squares estimate of this average.
-- **It refuses** masks that cannot tell the units apart: fewer different masks than n + 1, or two units always kept and removed together. Give a larger budget.
 
 ### `contextcite`
 
@@ -143,11 +152,11 @@ In the formulas below, `f(S)` is the value of the prompt that keeps exactly the 
   w_i = Σ_S  [ |S|! · (n − |S| − 1)! / n! ] · [ f(S + i) − f(S) ]        S: every combination of the other n − 1 units
   ```
 
-- **What it means.** The change in the value when unit i is added, averaged over all n! orders in which the units can be added one at a time. Like `banzhaf` it averages `f(S + i) − f(S)`, but each size of S gets the same total weight, 1/n. The few combinations with almost none or almost all of the other units therefore count far more each than the many of middle size. A joint effect of k units is shared equally, 1/k each. The least budget, 2n + 2, covers the empty and the full prompt and all masks that keep 1 or n − 1 units.
+- **What it means.** The change in the value when unit i is added, averaged over all n! orders in which the units can be added one at a time. Like `banzhaf` it averages `f(S + i) − f(S)`, but each size of S gets the same total weight, 1/n. The few combinations with almost none or almost all of the other units therefore count far more each than the many of middle size. A joint effect of k units is shared equally, 1/k each.
 
 ### `faithbanzhaf` and `faithshap`
 
-Both fit the surrogate with interactions, with one term for every set of up to `max_order` units. At the default, 2, that is every unit and every pair, 1 + n + n(n − 1)/2 numbers:
+Both fit the surrogate with interactions, with one term for every set of up to `max_order` units. At the default, 2, that is every unit and every pair:
 
 ```
 f̂(m) = b + Σ_i w_i·m_i + Σ_{i<j} w_ij·m_i·m_j
@@ -156,14 +165,14 @@ f̂(m) = b + Σ_i w_i·m_i + Σ_{i<j} w_ij·m_i·m_j
 | | `faithbanzhaf` | `faithshap` |
 |---|---|---|
 | Masks | the empty and the full prompt, then different masks drawn at random, each equally likely | the empty and the full prompt, then the masks that keep fewer than `max_order` units or remove fewer than that, then different masks drawn by size as `kernelshap` |
-| A mask counts | the same as any other. With `ridge=False` on sampled masks, shapiq corrects each mask's weight for how it was drawn | by the Shapley kernel. The empty and the full prompt get a very large weight (10⁸), which fits them to about five decimal places |
+| A mask counts | the same as any other. With `ridge=False` on sampled masks, shapiq corrects each mask's weight for how it was drawn | by the Shapley kernel. The empty and the full prompt get a very large weight (10⁸) |
 | Fit | every mask asked: least squares. Fewer: a ridge (`ridge=True`), or least squares (`ridge=False`) | weighted least squares |
 
 - **What they are.** The Faith-Banzhaf and Faith-Shap interaction indices (Tsai et al., 2023): the surrogate of that order which is closest to `f` over all 2ⁿ masks. For `faithbanzhaf` every mask counts the same in "closest"; for `faithshap` the masks count by the Shapley kernel. With `max_order=1` they are `banzhaf` and `kernelshap`.
 - **A unit's score** is now its own effect, and what it does only together with another unit is in the pair's term. When no effect in the model needs more than `max_order` units, a pair's term is the direct measurement, `w_ij = f(i and j) − f(i) − f(j) + f(none)`. An effect that needs more units than `max_order` is spread over the terms there are.
 - **`faithshap` adds up.** The base is the empty prompt's value, and the base, the scores and the interactions together give the full prompt's value, both held by the large weight of the table above.
+- **One number per unit again.** `e.shapley()` and `e.banzhaf()` fold the interactions of any result back into the units, by the sharing rules of `kernelshap` and `banzhaf` above: a set of k units gives each of them 1/k of its term, or 1/2^(k−1). `e.shapley_taylor(order)` keeps the terms of sets smaller than `order`, and shares the term of each larger set equally among its subsets of `order` units.
 - **The ridge** (`faithbanzhaf` on sampled masks). With nearly as many terms as masks, least squares fits the noise. The ridge adds a charge on the squared terms (not on the base), and picks its strength among 100 values, evenly spaced on a log scale from 10⁻⁶ to 10⁶, by leaving out one mask at a time and predicting it. The fit is done with the units coded as +1 and −1, where the charge treats every term alike, and its result is rewritten in the keep-or-remove form above. The SPEX paper fits its Faith-Banzhaf baseline by cross-validated ridge regression too (its section B.3).
-- **With `budget=2**n`**, every mask, `faithbanzhaf` is exact and `faithshap` nearly so (above). That is practical up to about 16 units.
 
 ### `spex`
 
@@ -183,7 +192,6 @@ Fitting a term for every set of up to 5 units is impossible in a long prompt: 10
 6. **Rewriting as scores** (Table 1). The terms found are rewritten, exactly, in the keep-or-remove form of the surrogate: `w_S = (−2)^|S| · Σ F(T)` over the found sets T that contain S. The predictions stay the same; the result reads as a score per unit and a `(together)` row per set.
 
 - **What it means.** A unit's score and each set's term have the same meaning as for `faithbanzhaf`, but only for the sets SPEX found; every other term is zero. When the value really has few terms, SPEX recovers them exactly. When it has many small ones, they are left out, and R² shows how much that costs.
-- **It refuses** a budget too small for its `degree`, such as the default 64. Take the budget from the table in section 3.
 
 ### `proxyspex`
 
@@ -194,7 +202,6 @@ Fitting a term for every set of up to 5 units is impossible in a long prompt: 10
 5. **Rewriting as scores**, as step 6 of `spex`, for sets of up to `max_order` units. The term of a larger set, which only trees deeper than `max_order` can give, is shared out among its smaller sets.
 
 - **What it means.** The scores describe the language model through the tree model, which learns from about a tenth of `spex`'s masks. Trees split first on the units with the largest effect, so a weak joint effect may never get a split of its own, and then shows up inside one unit's score ([results.md](results.md) §5 has an example).
-- **It needs a prompt of 8 units or more** (section 3 says why), and refuses fewer than 6.
 
 ## 3. How many masks: `budget`
 
@@ -204,11 +211,13 @@ More masks give steadier scores and cost more model calls. `ca.explain(..., budg
 |---|---|---|
 | `loo` | not used | always n + 1 masks: the full prompt, and one mask per unit |
 | `contextcite`, `lime` | 2 or more; 32 to 256 is usual | |
-| `banzhaf` | n + 1 or more | exact when the budget covers all 2ⁿ masks (up to 16 units). It raises an error when the masks drawn cannot tell the units apart: give a larger budget |
-| `kernelshap` | 2n + 2 or more (or all 2ⁿ masks, when that is fewer) | exact when the budget covers all 2ⁿ masks |
-| `faithbanzhaf`, `faithshap` | a few times the number of scores | with pairs (`max_order=2`) there are 1 + n + n(n − 1)/2 scores: 211 for 20 units, 5,051 for 100. With `budget=2**n`, every mask, `faithbanzhaf` is exact and `faithshap` nearly so (section 2) |
+| `banzhaf` | n + 1 or more | it raises an error when the masks drawn cannot tell the units apart (fewer different masks than n + 1, or two units always kept and removed together): give a larger budget |
+| `kernelshap` | 2n + 2 or more (or all 2ⁿ masks, when that is fewer) | 2n + 2 covers the empty and the full prompt and every mask that keeps 1 or n − 1 units |
+| `faithbanzhaf`, `faithshap` | a few times the number of scores | with pairs (`max_order=2`) there are 1 + n + n(n − 1)/2 scores: 211 for 20 units, 5,051 for 100 |
 | `spex` | from the table below | the default of 64 is refused, as is any budget too small for its `degree` |
 | `proxyspex` | about a tenth of `spex`'s | about 500 for 20 units, 800 for 100 |
+
+`budget=2**n` asks about every mask, which makes some methods exact (section 2). That is practical up to about 16 units.
 
 Budgets from the SPEX paper's Table 2, its row for b = 6, by the number of units. Each is 3 × 2⁶ × (p + 1), as in step 2 of `spex` above. The paper's main results use b = 8, four times as many masks:
 
@@ -239,8 +248,8 @@ e = ca.explain(prompt, model, target, method="contextcite", budget=64, test_mask
 | `test_masks` | 128 | how many test masks R² is measured on (section 2). Each costs as much as one of the method's masks, unless the method asked about the same mask. They are the same for every method run with the same `seed`, so with a `cache`, comparing methods on one prompt asks about them only once. 0 skips R² |
 | `seed` | 0 | decides which masks are drawn. The same seed gives the same masks, and so the same result, on every run |
 | `replace` | `None` | what happens to a removed unit. `None` deletes it. A text, such as `"[UNK]"`, is put in its place (the SPEX paper does this) |
-| `noise_repeats` | 3 | how often the full prompt is asked again to measure the noise ([results.md](results.md) §6). Scores smaller than the noise mean nothing. 0 skips it |
-| `removal` | `()` | for example `(1, 2, 3)`: also remove the 1, 2 and 3 units whose removal should change the value most, up or down, and report how far it really moves ([results.md](results.md) §6). One more request for each |
+| `noise_repeats` | 3 | how often the full prompt is asked again to measure the noise (section 2). 0 skips it |
+| `removal` | `()` | for example `(1, 2, 3)`: also remove the 1, 2 and 3 units whose removal should change the value most, and report how far it really moves (section 2). One more request for each |
 | `cache` | `None` | a file path. Every answer of the model is kept there, so running again, or running another method on the same prompt, does not ask the model twice |
 | `batch_size` | 32 | how many masked prompts your wrapper gets in one call |
 
@@ -251,24 +260,24 @@ Two other ways in take the same settings:
 
 ## 5. Each method's own settings
 
-`method="spex"` uses the defaults below. To change one, pass the method as an object: `method=ca.methods.SPEX(degree=3)`. The defaults are the most accurate settings measured. Section 2 says where each setting enters the computation.
+`method="spex"` uses the defaults below. To change one, pass the method as an object: `method=ca.methods.SPEX(degree=3)`. The defaults are the most accurate settings measured. Section 2 says what each setting does in the computation.
 
 | Object | Setting | Default | What it means |
 |---|---|---|---|
 | `LeaveOneOut()` | | | no settings |
 | `Banzhaf()` | | | no settings |
-| `ContextCite(alpha, standardize)` | `alpha` | 0.01 | the charge on the size of the scores. Larger: scores are pulled further towards zero, and more of them are exactly zero |
-| | `standardize` | `True` | the values are divided by their spread before the fit, so that `alpha` means the same for every target. `False` fits the raw values, as the ContextCite paper does |
+| `ContextCite(alpha, standardize)` | `alpha` | 0.01 | the charge on the size of the scores. Larger: more scores are exactly zero |
+| | `standardize` | `True` | divide the values by their spread before the fit. `False` fits the raw values, as the ContextCite paper does |
 | `LIME(kernel_width, alpha)` | `kernel_width` | 25.0 | how quickly a mask counts less as it removes more units. Smaller: only masks close to the full prompt count |
-| | `alpha` | 1.0 | the charge on the squared scores. Larger: scores are shrunk further towards zero. 0: not at all |
+| | `alpha` | 1.0 | the charge on the squared scores. 0: none |
 | `KernelSHAP(paired)` | `paired` | `True` | each mask drawn at random is used together with its opposite, which gives steadier scores |
 | `FaithBanzhaf(max_order, ridge)` | `max_order` | 2 | the largest set of units that gets a score of its own: 2 means single units and pairs |
-| | `ridge` | `True` | sampled masks are fitted by a ridge, as the SPEX paper does (B.3). `False` is plain least squares, which goes wrong when there are nearly as many scores as masks: R² was −0.08 against 0.79 in a test with noise. When every one of the 2ⁿ masks was asked, the fit is least squares and exact either way |
+| | `ridge` | `True` | sampled masks are fitted by a ridge. `False` is plain least squares, which goes wrong when there are nearly as many scores as masks: R² was −0.08 against 0.79 in a test with noise |
 | `FaithShap(max_order)` | `max_order` | 2 | as for `FaithBanzhaf` |
-| `SPEX(degree, chase_depth)` | `degree` | 5 | the largest set of units SPEX is built to find, and the number of errors its code corrects |
-| | `chase_depth` | `None` | how many of the least certain signs its decoder may flip when a bin does not decode (section 2). `None` means 2 × `degree`, the setting of the SPEX authors' own code (`spectralexplain`): this SPEX then gives the predictions of their code on the same masks. `chase_depth=degree` is the shapiq library's setting: 1 to 11 s faster per run, with R² 0.003 to 0.070 lower in 8 tests with noise |
+| `SPEX(degree, chase_depth)` | `degree` | 5 | the largest set of units SPEX is built to find |
+| | `chase_depth` | `None` | how many of the least certain signs its decoder may flip. `None` means 2 × `degree`, the setting of the SPEX authors' own code (`spectralexplain`). `chase_depth=degree` is the shapiq library's setting: 1 to 11 s faster per run, with R² 0.003 to 0.070 lower in 8 tests with noise |
 | `ProxySPEX(max_order, hpo)` | `max_order` | 5 | the largest set of units that can get a score of its own |
-| | `hpo` | `True` | tries eight settings of the tree model and keeps the one that predicts held-out masks best. `False` uses LightGBM's defaults (100 trees), which is faster |
+| | `hpo` | `True` | choose the tree model's settings among eight. `False` uses LightGBM's defaults (100 trees), which is faster |
 
 ## 6. How ContextAttr is checked
 
@@ -283,6 +292,20 @@ Two other ways in take the same settings:
 
 ## References
 
-- SPEX: J. S. Kang, L. Butler, A. Agarwal, Y. E. Erginbas, R. Pedarsani, B. Yu and K. Ramchandran. SPEX: Scaling Feature Interaction Explanations for LLMs. ICML 2025, PMLR 267. https://proceedings.mlr.press/v267/kang25a.html. The sections, equations, tables and algorithms cited as "SPEX" above are this paper's.
-- LIME: M. T. Ribeiro, S. Singh and C. Guestrin, 2016. KernelSHAP: S. Lundberg and S.-I. Lee, 2017. Faith-Banzhaf and Faith-Shap: C.-P. Tsai, C.-K. Yeh and P. Ravikumar, 2023. ContextCite: B. Cohen-Wang, H. Shah, K. Georgiev and A. Madry, 2024. ProxySPEX: L. Butler and others, 2025.
-- The interaction methods run through the shapiq library, and SPEX's decoding through its sparse-transform library.
+The sections, equations, tables and algorithms cited as "SPEX" above are those of the SPEX paper.
+
+| Method | Reference |
+|---|---|
+| `loo` | Leave-one-out is the plain removal test. For language models: J. Li, W. Monroe and D. Jurafsky. Understanding Neural Networks through Representation Erasure. arXiv:1612.08220, 2016. The ContextCite paper (below) uses it as a baseline |
+| `banzhaf` | J. F. Banzhaf III. Weighted Voting Doesn't Work: A Mathematical Analysis. Rutgers Law Review 19(2):317–343, 1965. As a score in machine learning: J. T. Wang and R. Jia. Data Banzhaf: A Robust Data Valuation Framework for Machine Learning. AISTATS 2023, PMLR 206:6388–6421 |
+| `contextcite` | B. Cohen-Wang, H. Shah, K. Georgiev and A. Mądry. ContextCite: Attributing Model Generation to Context. NeurIPS 2024. arXiv:2409.00729. Its fit, the Lasso: R. Tibshirani. Regression Shrinkage and Selection via the Lasso. Journal of the Royal Statistical Society B 58(1):267–288, 1996 |
+| `lime` | M. T. Ribeiro, S. Singh and C. Guestrin. "Why Should I Trust You?": Explaining the Predictions of Any Classifier. KDD 2016, pp. 1135–1144 |
+| `kernelshap` | S. M. Lundberg and S.-I. Lee. A Unified Approach to Interpreting Model Predictions. NeurIPS 2017, pp. 4768–4777. The Shapley value: L. S. Shapley. A Value for n-Person Games. In Contributions to the Theory of Games II, Annals of Mathematics Studies 28, pp. 307–317. Princeton University Press, 1953 |
+| `faithbanzhaf`, `faithshap` | C.-P. Tsai, C.-K. Yeh and P. Ravikumar. Faith-Shap: The Faithful Shapley Interaction Index. Journal of Machine Learning Research 24(94):1–42, 2023 |
+| `spex` | J. S. Kang, L. Butler, A. Agarwal, Y. E. Erginbas, R. Pedarsani, B. Yu and K. Ramchandran. SPEX: Scaling Feature Interaction Explanations for LLMs. ICML 2025, PMLR 267. https://proceedings.mlr.press/v267/kang25a.html |
+| `proxyspex` | L. Butler, A. Agarwal, J. S. Kang, Y. E. Erginbas, B. Yu and K. Ramchandran. ProxySPEX: Inference-Efficient Interpretability via Sparse Feature Interactions in LLMs. NeurIPS 2025. arXiv:2505.17495 |
+
+Also used:
+
+- `e.shapley_taylor`: M. Sundararajan, K. Dhamdhere and A. Agarwal. The Shapley Taylor Interaction Index. ICML 2020, PMLR 119:9259–9268.
+- The four interaction methods run through the shapiq library, and SPEX's decoding through its sparse-transform library: M. Muschalik, H. Baniecki, F. Fumagalli, P. Kolpaczki, B. Hammer and E. Hüllermeier. shapiq: Shapley Interactions for Machine Learning. NeurIPS 2024, Datasets and Benchmarks Track.

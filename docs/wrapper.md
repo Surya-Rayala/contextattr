@@ -30,18 +30,11 @@ A *log-probability* says how likely the model finds a text: 0 is certain, and th
 
 ## 2. What the model has to give
 
-`score` needs one thing from the model: the log-probability of each token of an answer that you supply, read after a prompt. Any model whose log-probabilities you can read can give this, wherever it runs. They come in one of three forms:
+`score` needs one thing from the model: the log-probability of each token of an answer that you supply, read after a prompt. Nothing else is read: not the rest of the vocabulary, and not other possible answers. Any model whose log-probabilities you can read can give this, in your own process (section 5) or behind your own server (section 6).
 
-| What you can read | How `score` uses it | Cost for an answer of T tokens |
-|---|---|---|
-| the log-probability of every token of a text you send | send the prompt followed by the answer, and keep the numbers of the answer's tokens | one pass of the model, or one request |
-| for the next token, the log-probabilities of the whole vocabulary | go through the answer token by token: send the prompt and the answer so far, and read the number of the answer's next token | T requests |
-| for the next token, only the n most likely tokens with their log-probabilities (top n) | the same, as long as each token of the answer is among the n. When one is not, raise an error: never put a guess in its place | T requests |
-
-- **A model in your own process** gives the first form: one pass returns the whole vocabulary at every position (section 5).
-- **A server or a service** gives whichever form its interface offers (section 6).
-- **In every form** you must be able to send the text exactly as the model reads it: the prompt in the model's own chat format, with the answer placed where the model's reply begins. An interface that only takes chat messages and writes its own reply cannot place the answer.
-- **Top n is the weakest form.** It is enough for short answers that stay likely, such as `ca.Choice("True", "False")`. When a removed part makes the answer unlikely, its token is no longer among the n, and the run stops with your error. Use one of the first two forms when you have the choice.
+- **Where the numbers come from.** A model's raw output is a score for every token of its vocabulary, called a *logit*. The function `log_softmax` turns the logits into log-probabilities, and `score` keeps the one of each token of the answer. Server software usually does this itself and returns log-probabilities.
+- **Natural logarithms.** If what you get are probabilities, take the natural logarithm of each. If you get logarithms in base 2 or base 10, multiply them by ln 2 or ln 10.
+- **The text as the model reads it.** You must be able to send the prompt in the model's own chat format, with the answer placed where the model's reply begins. An interface that only takes chat messages and writes its own reply cannot place the answer.
 
 ## 3. The steps
 
@@ -109,16 +102,12 @@ Optional: `ca.Scored(logprobs, tokens)` also carries the text of each token. The
 [["It is hot and humid."], ["I do not know."]]
 ```
 
-`sampling` says how to sample:
+`sampling.n`, the number of replies for each prompt, is the one field a wrapper must honour: a call that returns another number of replies is refused.
 
-| Field | Default | Meaning |
-|---|---|---|
-| `n` | 1 | replies per prompt |
-| `temperature` | 0.0 | how random the replies are. 0 always picks the most likely next token (greedy decoding); higher gives more varied replies |
-| `top_p` | 1.0 | nucleus sampling: sample only among the most likely tokens that together have this probability. 1.0 means all of them |
-| `max_tokens` | 256 | the longest reply |
-| `seed` | 0 | the same seed should give the same replies; `None` means no seed |
-| `stop` | `()` | strings that end a reply; the reply does not include them |
+The other fields say how to sample: `temperature` (0 asks for the most likely reply, higher values for more varied ones), `top_p`, `max_tokens` (256 unless set), `seed` and `stop`. ContextAttr fills them in; you never have to. Pass them on to your model where its software supports them, as the wrapper of section 5 does. Or ignore them and use the settings your model is deployed with, set inside the wrapper and named in its `name`. The results then describe the model as deployed, with two things to know:
+
+- a request for the model's most likely answer returns whatever your settings give;
+- at a deployment temperature of 0, every reply to a prompt is the same, so asking for several gives no mix of wanted and unwanted answers.
 
 ## 5. A complete wrapper for a model in your own process
 
@@ -220,32 +209,6 @@ class ServerModel:
 - **`generate`**, if you want it: call your server's own generation, and return `sampling.n` replies for each prompt (section 4).
 - Keys, addresses and retries belong to your server's client. Keep keys out of the wrapper file.
 
-**If the server returns the candidates for the next token** (the whole vocabulary, or the top n), go through the response token by token:
-
-```python
-class StepModel(ServerModel):
-    def tokens_of(self, response):
-        """Yours: the response's text, cut into tokens by the model's tokenizer."""
-        raise NotImplementedError
-
-    def next_token_logprobs(self, text):
-        """Yours: send the text, and return the candidates for the next token as {token text: log-probability}."""
-        raise NotImplementedError
-
-    def score(self, prompts, responses):
-        out = []
-        for prompt, response in zip(prompts, responses):
-            logprobs, so_far = [], self.as_text(prompt)
-            for token in self.tokens_of(response):
-                candidates = self.next_token_logprobs(so_far)
-                if token not in candidates:              # top n, and this token is not among them
-                    raise ValueError(f"no log-probability for {token!r} among the {len(candidates)} tokens returned")
-                logprobs.append(candidates[token])
-                so_far += token
-            out.append(ca.Scored(logprobs))
-        return out
-```
-
 ## 7. The rules
 
 | Rule | Why |
@@ -253,7 +216,7 @@ class StepModel(ServerModel):
 | Change `name` whenever the answers could change: another model, revision, precision or prompt format | every cached answer is stored under the name |
 | Apply your model's own chat template and its way of handling a system prompt | ContextAttr does not know any model's format |
 | `score`: put the response right where the model's reply begins, and return one log-probability per response token, without the end-of-turn token | the number explained is the likelihood of that response |
-| `generate`: return exactly `sampling.n` replies per prompt, the reply's text only, and honour `temperature`, `top_p`, `max_tokens`, `stop` and `seed` where your model's software can | `check_model` reports what is not honoured |
+| `generate`: return exactly `sampling.n` replies per prompt, the reply's text only. Pass the other sampling fields on where your model's software supports them (section 4) | a call with another number of replies is refused. `check_model` notes replies that vary at temperature 0 and a seed that is ignored |
 | A call gets up to `batch_size` prompts (32 unless you set it): run them however is fastest, as one GPU batch or as concurrent requests | ContextAttr sends all of a method's prompts at once |
 | Raise an error on a failure and on a prompt that is too long. Never cut a prompt short | a shortened prompt is a different prompt, and its score would be wrong without any sign |
 | Retries and rate limits are the wrapper's job (most clients of a server already retry) | every answer is cached, so an interrupted run continues where it stopped |
