@@ -30,8 +30,8 @@ def test_the_toy_model_s_known_answer(method):
 def test_contrast_shows_what_tips_the_answer():
     e = ca.explain(rio2(), ca.ToyModel.demo(), ca.Contrast(), method="kernelshap", budget=8)
     s = e.scores
-    assert s["d3"] > 0 > s["d2"] and s["d1"] < 0       # winter pushes to the bad answer, summer (with d1) to the good
-    assert s["d1"] > s["d2"]                            # d1 matters only together with d2
+    assert s["d2"] > 0 > s["d3"] and s["d1"] > 0       # summer (with d1) pushes to the good answer, winter to the bad
+    assert s["d1"] < s["d2"]                            # d1 matters only together with d2
 
 
 def test_requests_and_the_shared_test_masks():
@@ -67,7 +67,8 @@ def test_views_of_an_explanation():
     assert json.loads(json.dumps(d))["units"] == ["d1", "d2", "d3"] and d["interactions"] == []
     assert d["target"].startswith("LogProb") and d["masks"] == 8
     text = e.table()
-    assert text.splitlines()[1].strip().startswith("d3") and "Winter in Brazil" in text and "R² 1" in text
+    assert text.splitlines()[2].strip().startswith("d3") and "Winter in Brazil" in text and "R² 1" in text
+    assert text.splitlines()[1].strip().startswith("above 0: the unit")
     assert e.surrogate.predict(np.ones((1, 3)))[0] == pytest.approx(e.surrogate.intercept + D3)
 
 
@@ -90,3 +91,35 @@ def test_explain_checks_its_inputs():
         ca.attribute(lambda m: np.ones(2), 3, method="loo")
     with pytest.raises(ValueError):
         ca.attribute(lambda m: m[:, 0], 2, unit_ids=["only one"])
+
+
+def test_the_second_line_says_how_to_read_the_sign():
+    """Every target: a score above 0 pushes towards what is explained, and the printed result says what that is."""
+    from contextattr.result import sign_meaning
+
+    said = {"LogProb(response=None, reduce='mean')": "makes the answer more likely",
+            "Pooled(label='negative', reduce='mean')": "makes the negative answers more likely",
+            "Pooled(label='positive', reduce='mean')": "makes the positive answers more likely",
+            "Contrast(reduce='mean')": "pushes towards the positive (wanted) answers",
+            "Choice(a='450', b='310')": "pushes towards '450' · below 0: towards '310'",
+            "a function": "raises the value", None: "raises the value"}
+    for target, words in said.items():
+        assert sign_meaning(target).startswith("above 0: the unit ") and words in sign_meaning(target), target
+    for target in (ca.LogProb(), ca.Pooled("negative"), ca.Contrast(), ca.Choice("450", "310")):
+        assert not sign_meaning(repr(target)).endswith("lowers it"), repr(target)       # each has its own line
+    model = ca.ToyModel.demo()
+    e = ca.explain(rio(), model, ca.Sampled(ca.checks.regex(r"cold"), samples=2), method="loo", test_masks=0,
+                   noise_repeats=0)
+    assert "more replies get flagged by the check" in e.table().splitlines()[1]
+    assert ca.Explanation.from_dict(e.as_dict()).table().splitlines()[1] == e.table().splitlines()[1]
+
+
+def test_the_table_is_the_same_on_every_machine():
+    """Scores that print alike keep the prompt's order, and a zero never prints as -0.0000: rounding noise of the
+    last bits, which differs between machines, must not change what is printed."""
+    def f(masks):
+        return 2.0 * np.asarray(masks)[:, 1] + 1e-17 * np.asarray(masks)[:, 0] - 1e-17 * np.asarray(masks)[:, 2]
+
+    lines = ca.attribute(f, 4, method="banzhaf", budget=16, unit_ids=["a", "b", "c", "d"]).table().splitlines()
+    assert [line.split()[0] for line in lines[2:6]] == ["b", "a", "c", "d"]
+    assert all("-0.0000" not in line for line in lines)

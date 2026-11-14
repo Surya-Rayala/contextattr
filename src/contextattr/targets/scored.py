@@ -80,7 +80,9 @@ class Pooled(ScoredTarget):
 
 @dataclass(frozen=True)
 class Contrast(ScoredTarget):
-    """Pooled("negative") − Pooled("positive"): what moves the model from desired to undesired responses."""
+    """Pooled("positive") − Pooled("negative"): the wanted responses against the unwanted ones. As for every target, a
+    score above 0 pushes towards what is explained, here the wanted responses; a unit with a score below 0 pushes
+    towards the unwanted ones. (Until 0.1.5 the difference was taken the other way round.)"""
 
     reduce: str = "mean"
 
@@ -92,7 +94,7 @@ class Contrast(ScoredTarget):
 
     def combine(self, columns: np.ndarray, items: list[Item]) -> np.ndarray:
         neg = np.array([i.label == "negative" for i in items])
-        return columns[:, neg].mean(axis=1) - columns[:, ~neg].mean(axis=1)
+        return columns[:, ~neg].mean(axis=1) - columns[:, neg].mean(axis=1)
 
 
 @dataclass(frozen=True)

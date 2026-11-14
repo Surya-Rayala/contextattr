@@ -45,7 +45,7 @@ def test_execute_resume_and_settings(tmp_path):
         "run.json", "cache.sqlite", "explanations.jsonl", "summary.json", "report.html"}
     first, second = results.explanations
     assert first.target.startswith("Pooled") and second.target.startswith("Contrast")   # chosen by the labels
-    assert first.scores["d3"] > 0 and second.scores["d2"] < 0
+    assert first.scores["d3"] > 0 and second.scores["d2"] > 0 > second.scores["d3"]   # unwanted alone; wanted − unwanted
     lines = (out / "explanations.jsonl").read_text().splitlines()
     again = ca.Run(ca.ToyModel.demo(), prompts(), method="kernelshap", budget=8, removal=(1,)).execute(out)
     assert (out / "explanations.jsonl").read_text().splitlines() == lines and len(again) == 2   # nothing redone
@@ -65,7 +65,7 @@ def test_sampled_responses_and_the_summary(tmp_path):
     (e,) = results.explanations
     assert e.target.startswith("Contrast") and len(e.prompt.responses) == 8
     summary = ca.Results([e]).summary(by="unit", top=1)
-    assert summary["d3"]["share_in_top_1"] == 1.0 and summary["d1"]["prompts"] == 1
+    assert summary["d2"]["share_in_top_1"] == 1.0 and summary["d1"]["prompts"] == 1
     with pytest.raises(ValueError):
         results.summary(by="nothing")
 

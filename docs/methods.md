@@ -1,6 +1,6 @@
 # Methods and settings
 
-Which method to use, exactly how each one computes its scores, how many masks to give it, and what every setting means. [results.md](results.md) shows the output of each method on one example and how to read it.
+Which method to use, exactly how each one computes its scores, how many masks to give it, and what every setting means. [results.md](results.md) shows how to read a result.
 
 Words used here (`ca` is the package: `import contextattr as ca`):
 
@@ -11,7 +11,7 @@ Words used here (`ca` is the package: `import contextattr as ca`):
 | value (`f(m)`) | the number read from the model for the prompt with only the units that mask `m` keeps. The *target* decides which number ([interface.md](interface.md) §5) |
 | method | decides which masks to ask about, and works out the scores from their values |
 | budget | the number of masks a method may use for one prompt. Each mask costs model calls, so the budget is the cost |
-| R² | how well the scores predict the value on test masks (section 2): 1 is perfect, 0 or below means the scores should not be trusted ([results.md](results.md) §6 says what to do then) |
+| R² | how well the scores predict the value on test masks (section 2): 1 is perfect, 0 or below means the scores should not be trusted ([results.md](results.md) §5 says what to do then) |
 
 ## 1. Which method
 
@@ -51,7 +51,7 @@ with interactions:     f̂(m) = b + Σ_i w_i·m_i + Σ_S w_S·Π_{i in S} m_i
 
 *Least squares* means: choose `b` and the `w` that make the squared differences `(f(m) − f̂(m))²`, added up over the masks asked, as small as possible. The methods differ in three things, which the parts below give for each: which masks they ask about, how much each mask counts, and what they add to least squares.
 
-**Exact or estimated.** `loo` is always exact. `banzhaf` (up to 16 units), `kernelshap` and `faithbanzhaf` are exact when the budget covers every one of the 2ⁿ masks (`budget=2**n`): nothing is drawn at random and the result is the quantity itself. `faithshap` then agrees with the exact quantity to about five decimal places: it holds the empty and the full prompt by a very large weight, not exactly. With fewer masks each gives an estimate from a random sample, the same on every run with the same `seed`. `contextcite` and `lime` are never exact: their charge changes the scores whatever the number of masks.
+**Exact or estimated.** `loo` is always exact. `banzhaf` (up to 16 units), `kernelshap` and `faithbanzhaf` are exact when the budget covers every one of the 2ⁿ masks (`budget=2**n`): nothing is drawn at random and the result is the quantity itself. `faithshap` then agrees with the exact quantity to about five decimal places: it holds the empty and the full prompt by a very large weight, not exactly. With fewer masks each gives an estimate from a random sample, the same on every run with the same `seed`. `contextcite` and `lime` are never exact: they add a charge on the size of the scores (below), which changes them whatever the number of masks.
 
 **How a result is checked.** `f̂(m)` is what the scores predict for mask `m`.
 
@@ -69,28 +69,28 @@ In the formulas below, `f(S)` is the value of the prompt that keeps exactly the 
 
 ### A worked example
 
-The example of [results.md](results.md) has three units. Its eight values (results.md §2) give the value without and with `d1`, for each combination of the other two:
+The second case of [results.md](results.md) has two documents that hold the answer together: `d3` names a month, and `d2` ties the question to it. The six other documents change nothing, so four values tell everything:
 
-| The other units kept | Value without `d1` | Value with `d1` | Change when `d1` is added |
-|---|---|---|---|
-| neither | 0.000 | 0.000 | 0.000 |
-| only `d2` | −0.262 | −0.309 | −0.047 |
-| only `d3` | +0.250 | +0.250 | 0.000 |
-| both | −0.012 | −0.059 | −0.047 |
+| Kept, of `d2` and `d3` | Value |
+|---|---|
+| neither | −3.0486 |
+| only `d2` | −3.0486 |
+| only `d3` | −0.6931 |
+| both | −0.0486 |
 
-`d1` changes the value only when `d2` is there. Each method turns these four changes into its numbers in its own way:
+`d2` adds nothing alone, and +0.645 when `d3` is there. `d3` adds +2.355 alone, and +3.000 when `d2` is there. Each method turns these changes into its numbers in its own way:
 
-- **`loo`** reads the last row alone, where all the other units are kept: −0.047. `d2` gets the same joint effect once more, so `loo` can count a joint effect twice.
-- **`banzhaf`** takes the plain mean of the four changes: (0 − 0.047 + 0 − 0.047) / 4 = −0.023. Half of the joint effect goes to `d1`, and the other half to `d2`.
-- **`kernelshap`** takes a weighted mean. The rows with neither and with both of the other units count 1/3 each, and the two rows between them 1/6 each: −0.047/6 − 0.047/3 = −0.023. Here that equals `banzhaf`, because the only joint effect is one of two units. Its three scores add up to the full prompt's value minus the empty prompt's: −0.0234 − 0.2854 + 0.2500 = −0.059 to three decimals.
-- **`contextcite` and `lime`** estimate such an average from 64 random masks, with a pull towards zero: −0.007 and −0.021.
-- **The interaction methods** give two numbers in place of one. `d1`'s own score is the first row, 0.000: what `d1` does with nothing else there. The pair's term is the change with `d2` there minus the change without it: −0.047 − 0.000 = −0.047.
+- **`loo`** reads the change with all the other units kept: +0.645 for `d2` and +3.000 for `d3`. The joint effect is in both, so `loo` counts it twice.
+- **`banzhaf`** takes the plain mean of a unit's changes: (0 + 0.645) / 2 = +0.322 for `d2`, and (2.355 + 3.000) / 2 = +2.678 for `d3`. Half of the joint effect goes to each.
+- **`kernelshap`** takes a weighted mean, in which the combinations with very few or very many of the other units count most. Here it equals `banzhaf`, because the only joint effect is one of two units. Its scores add up to the full prompt's value minus the empty prompt's: 0.322 + 2.678 = 3.000.
+- **`contextcite` and `lime`** estimate such an average from fewer masks, with a pull towards zero.
+- **The interaction methods** give each unit its effect alone, 0 for `d2` and +2.355 for `d3`, and the pair a term of its own: 3.000 − 2.355 = +0.645.
 
 ### `loo`: leave one out
 
 - **Masks.** The full prompt and the n prompts that each lack one unit: n + 1 masks, nothing random.
 - **The score.** `w_i = f(full prompt) − f(full prompt without unit i)`. There is no fit. The base is `b = f(full prompt) − Σ_i w_i`, so the surrogate gives these n + 1 values back exactly.
-- **What it means.** Each unit is tested only with all the others present. Two limits follow. When two units hold the same fact, removing either changes little, and both score near zero. When two units matter only together, removing either loses the whole joint effect, and both get all of it. For a mask that removes several units the surrogate adds up the single losses, which is why R² is often lower than for the other methods.
+- **What it means.** Each unit is tested only with all the others present. Two limits follow. When two units hold the same fact, removing either changes little, and both score near zero. A joint effect of several units goes to each of them in full (the worked example). For a mask that removes several units the surrogate adds up the single losses, which is why R² is often lower than for the other methods.
 
 ### `banzhaf`
 
@@ -201,7 +201,7 @@ Fitting a term for every set of up to 5 units is impossible in a long prompt: 10
 4. **Keep the large terms and fit them again.** When the trees hold more terms than the prompt has units, the largest coefficients, those that hold 95 % of the total of the squared coefficients (the base left out of the total), are kept and fitted again to the masks asked, by a ridge whose strength is picked as for `faithbanzhaf`.
 5. **Rewriting as scores**, as step 6 of `spex`, for sets of up to `max_order` units. The term of a larger set, which only trees deeper than `max_order` can give, is shared out among its smaller sets.
 
-- **What it means.** The scores describe the language model through the tree model, which learns from about a tenth of `spex`'s masks. Trees split first on the units with the largest effect, so a weak joint effect may never get a split of its own, and then shows up inside one unit's score ([results.md](results.md) §5 has an example).
+- **What it means.** The scores describe the language model through the tree model, which learns from about a tenth of `spex`'s masks. Trees split first on the units with the largest effect, so a weak joint effect may never get a split of its own, and then shows up inside one unit's score.
 
 ## 3. How many masks: `budget`
 
@@ -247,16 +247,16 @@ e = ca.explain(prompt, model, target, method="contextcite", budget=64, test_mask
 | `budget` | 64 | how many masks the method may use (section 3) |
 | `test_masks` | 128 | how many test masks R² is measured on (section 2). Each costs as much as one of the method's masks, unless the method asked about the same mask. They are the same for every method run with the same `seed`, so with a `cache`, comparing methods on one prompt asks about them only once. 0 skips R² |
 | `seed` | 0 | decides which masks are drawn. The same seed gives the same masks, and so the same result, on every run |
-| `replace` | `None` | what happens to a removed unit. `None` deletes it. A text, such as `"[UNK]"`, is put in its place (the SPEX paper does this) |
+| `replace` | `None` | what happens to a removed unit: deleted, or replaced by a text ([interface.md](interface.md) §6) |
 | `noise_repeats` | 3 | how often the full prompt is asked again to measure the noise (section 2). 0 skips it |
 | `removal` | `()` | for example `(1, 2, 3)`: also remove the 1, 2 and 3 units whose removal should change the value most, and report how far it really moves (section 2). One more request for each |
 | `cache` | `None` | a file path. Every answer of the model is kept there, so running again, or running another method on the same prompt, does not ask the model twice |
 | `batch_size` | 32 | how many masked prompts your wrapper gets in one call |
 
-Two other ways in take the same settings:
+Two other ways in:
 
-- `ca.explain(prompt, value=f, name="...")` explains any function `f` of masked prompts in place of a model and a target, for example a classifier. `f` gets a list of masked prompts and returns one number for each. `name` is how the result calls it, and what a `cache` stores its answers under.
-- `ca.attribute(f, n, unit_ids=None, ...)` explains any function of masks, for inputs that are not text. `f` gets an array with one row per mask and `n` columns, `True` where a unit is kept, and returns one number per row. `unit_ids` names the columns.
+- `ca.explain(prompt, value=f, name="...")`, with the same settings, explains any function `f` of masked prompts in place of a model and a target, for example a classifier. `f` gets a list of masked prompts and returns one number for each. `name` is how the result calls it, and what a `cache` stores its answers under.
+- `ca.attribute(f, n, unit_ids=None, ...)`, with `method`, `budget`, `test_masks`, `seed` and `removal`, explains any function of masks, for inputs that are not text. `f` gets an array with one row per mask and `n` columns, `True` where a unit is kept, and returns one number per row. `unit_ids` names the columns.
 
 ## 5. Each method's own settings
 
@@ -281,8 +281,8 @@ Two other ways in take the same settings:
 
 ## 6. How ContextAttr is checked
 
-- Each method is tested against exact answers: the closed forms of section 2, and values computed over every mask. You can run such a check on your own model: `contextattr demo` ([wrapper.md](wrapper.md) §10).
-- On a real model (Llama-3.2-3B-Instruct, on one GPU) and a prompt of 20 documents, every method puts first the document the question is about, with R² from 0.81 to 0.99 on the test masks.
+- Each method is tested against exact answers: the closed forms of section 2, and values computed over every mask. You can run such a check on your own model: `contextattr demo` ([wrapper.md](wrapper.md) §5).
+- On a real model (Llama-3.2-3B-Instruct, on one GPU) and a prompt of 20 documents, every method puts first the document the question is about.
 - With its default settings, this SPEX gives the same predictions as the SPEX authors' own code on the same masks: R² 1.0000 between the two in 8 of 8 test functions with noise.
 - Against the SPEX paper's published results, on a small sample (15 reviews, 10 questions, one prompt):
   - Sentiment: the methods come in the paper's order. R² is within 0.04 of the paper's on reviews of 8 to 15 words, and within 0.15 on longer ones.

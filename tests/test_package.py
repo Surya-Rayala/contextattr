@@ -54,5 +54,6 @@ def test_the_readme_runs_and_names_nothing_of_anvil(capsys):
     namespace: dict = {}
     exec(compile(blocks[0], "README.md", "exec"), namespace)  # noqa: S102 - the README's own example
     first, *rows = capsys.readouterr().out.strip().splitlines()
-    e = namespace["e"]                                       # "d3 scores highest"; "the first line gives R²"
-    assert e.top(1)[0][0] == "d3" and rows[0].split()[0] == "d3" and "R² " in first and e.r2 > 0.95
+    e = namespace["e"]                                       # "d2 scores highest"; "the first line gives R²"
+    assert e.top(1)[0][0] == "d2" and rows[1].split()[0] == "d2" and "R² " in first and e.r2 > 0.95
+    assert rows[0].strip().startswith("above 0: the unit makes the answer more likely")

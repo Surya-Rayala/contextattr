@@ -58,7 +58,7 @@ def test_pooled_and_contrast_combine_by_label():
                     Response("n2", "z", "negative"), Response("u", "w"))
     items = Contrast().items(p)
     assert [i.id for i in items] == ["n1", "n2", "p1"]
-    assert Contrast().combine(np.array([[-1.0, -4.0, -3.0]]), items) == pytest.approx([(-1.0 - 4.0) / 2 + 3.0])
+    assert Contrast().combine(np.array([[-1.0, -4.0, -3.0]]), items) == pytest.approx([-3.0 - (-1.0 - 4.0) / 2])   # wanted − unwanted
     pooled = Pooled("negative").items(p)
     assert [i.id for i in pooled] == ["n1", "n2"]
     assert Pooled().combine(np.array([[-1.0, -4.0]]), pooled) == pytest.approx([-2.5])

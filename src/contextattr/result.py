@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -10,6 +11,26 @@ import numpy as np
 from .methods import indices
 from .methods.base import Surrogate
 from .prompt import Prompt, prompt_from_dict, prompt_to_dict
+
+
+def sign_meaning(target: str | None) -> str:
+    """One line on how to read the sign of a score, from the target's name as an Explanation keeps it. The rule is the
+    same for every target: a score above 0 means the unit pushes the model towards what is explained."""
+    target = target or ""
+    choice = re.fullmatch(r"Choice\(a=(.+), b=(.+)\)", target)
+    pooled = re.match(r"Pooled\(label='(\w+)'", target)
+    if target.startswith("LogProb("):
+        return "above 0: the unit makes the answer more likely · below 0: less likely"
+    if pooled:
+        return f"above 0: the unit makes the {pooled.group(1)} answers more likely · below 0: less likely"
+    if target.startswith("Contrast("):
+        return ("above 0: the unit pushes towards the positive (wanted) answers · below 0: towards the negative "
+                "(unwanted) ones")
+    if choice:
+        return f"above 0: the unit pushes towards {choice.group(1)} · below 0: towards {choice.group(2)}"
+    if target.startswith("Sampled("):
+        return "above 0: the unit makes more replies get flagged by the check · below 0: fewer"
+    return "above 0: the unit raises the value · below 0: lowers it"
 
 
 @dataclass(frozen=True)
@@ -64,16 +85,17 @@ class Explanation:
         return [(self.unit_ids[i], float(self.surrogate.scores[i])) for i in order]
 
     def table(self, width: int = 60) -> str:
-        """A plain table of every unit, highest score first."""
+        """A plain table: the first line, what a score above and below 0 means, then every unit, highest first."""
         noise = self.noise["std"] if self.noise else None
         head = (f"{self.prompt_id or 'attribute'} · {self.method} · {self.masks} masks · "
                 f"R² {_fmt(self.r2)} on {self.test_masks} test masks · noise {_fmt(noise)} · "
                 f"{self.requests.get('requests', 0)} requests")
-        rows = []
-        for i in np.argsort(-self.surrogate.scores, kind="stable"):
+        rows = ["  " + sign_meaning(self.target)]
+        shown = np.round(self.surrogate.scores, 4) + 0.0     # as printed: ties keep the prompt's order, and no -0.0000
+        for i in np.argsort(-shown, kind="stable"):
             text = "" if self.unit_texts is None else self.unit_texts[i].replace("\n", " ")
             text = text if len(text) <= width else text[: width - 1] + "…"
-            rows.append(f"  {self.unit_ids[i]:<12} {self.surrogate.scores[i]:+10.4f}  {text}")
+            rows.append(f"  {self.unit_ids[i]:<12} {shown[i]:+10.4f}  {text}")
         for s, w in self.top_interactions(5):
             rows.append(f"  {' & '.join(s):<12} {w:+10.4f}  (together)")
         for r in self.removal or []:

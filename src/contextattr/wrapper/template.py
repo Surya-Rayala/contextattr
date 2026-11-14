@@ -11,7 +11,7 @@ model only through an object like this one: a `name`, `score` and, optionally, `
    right result is known, and says whether your model's results agree.
 4. Use it: `ca.explain(prompt, MyModel(), ...)`, or `use = "my_wrapper.py:MyModel"` in a run file.
 
-The guide, with a complete wrapper to copy from and the recipe for a model behind a server:
+The guide, with a complete wrapper to copy from:
 https://github.com/Surya-Rayala/contextattr/blob/main/docs/wrapper.md
 """
 

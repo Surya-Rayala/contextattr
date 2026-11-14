@@ -54,7 +54,7 @@ def test_values_equal_the_formula():
     v = Value(rio(), ToyModel.demo(), LogProb())
     assert v(ALL3) == pytest.approx([bad_mean(*m) for m in ALL3], rel=1e-12)
     c = Value(rio2(), ToyModel.demo(), Contrast())
-    assert c(ALL3) == pytest.approx([bad_mean(*m) - good_mean(*m) for m in ALL3], rel=1e-12)
+    assert c(ALL3) == pytest.approx([good_mean(*m) - bad_mean(*m) for m in ALL3], rel=1e-12)
     cols = Value(rio2(), ToyModel.demo(), Contrast(), per_response=True)(ALL3)
     assert cols.shape == (8, 2) and [i.id for i in c.items] == ["bad-1", "good-1"]
     assert cols[:, 1] == pytest.approx([good_mean(*m) for m in ALL3], rel=1e-12)

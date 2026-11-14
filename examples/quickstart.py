@@ -23,13 +23,15 @@ prompt = ca.Prompt("rio-01", messages=[
 model = ca.ToyModel.demo()
 print(ca.check_model(model), "\n")
 
-# What moves the model from the good answer to the bad one? Three units have only 8 masks: exact Shapley values.
+# Which parts push towards the good answer (above 0) and which towards the bad one (below 0)? Three units have only
+# 8 masks: exact Shapley values.
 e = ca.explain(prompt, model, ca.Contrast(), method="kernelshap", budget=8, removal=(1,))
 print(e, "\n")
 
 # The behaviour itself: how often the model says "cold", sampled afresh, with d3 and without it.
 cold = ca.checks.regex(r"\bcold\b")
-print("removing", e.top(1)[0][0], "→", ca.intervene(prompt, model, cold, [u for u, _ in e.top(1)], samples=200))
+worst = min(e.scores, key=e.scores.get)          # the lowest score: the part that pushes towards the bad answer
+print("removing", worst, "→", ca.intervene(prompt, model, cold, [worst], samples=200))
 
 if len(sys.argv) > 1:
     e.to_html(sys.argv[1])

@@ -1,4 +1,4 @@
-"""A demonstration on planted facts (docs/wrapper.md §10): three prompts whose facts are invented, so that the right
+"""A demonstration on planted facts (docs/wrapper.md §5, docs/results.md): three prompts whose facts are invented, so that the right
 result is known before any model is asked. It answers the question that `check_model` leaves open: the wrapper keeps
 the contract, but are the results right with this model?
 
