@@ -76,7 +76,7 @@ rio · KernelSHAP(paired=True) · 8 masks · R² 0.985 on 128 test masks · nois
 
 **How to read the output:**
 
-- The first line names the prompt and the method. `8 masks` are the 8 copies of the prompt, each with some parts removed, that the model was asked about, and `11 requests` is what that cost. `R²` says how far to trust the result: close to 1, the scores describe the model well; close to 0, do not use them. `noise` is how much the model's number changes when it is asked the same thing again.
+- The first line names the prompt and the method. `8 masks` are the 8 copies of the prompt, each with some parts removed, that the model was asked about, and `11 requests` is what that cost: one for each of the 8 copies, and 3 more that ask about the full prompt again, to measure the noise. `R²` says how far to trust the result: close to 1, the scores describe the model well; close to 0, do not use them. `noise` is how much the model's number changes when it is asked the same thing again.
 - The second line says how to read the scores. The rule is the same for every result:
   - **above 0**: the part pushes the model towards the answer. `d2`, the sentence about summer, is what makes this model say "hot";
   - **below 0**: the part pushes the model away from the answer;

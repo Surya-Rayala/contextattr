@@ -321,3 +321,36 @@ kind = "contrast"                    #           with that target's settings (§
 | `contextattr demo [my_wrapper.py:MyModel]` | explains three cases with known answers, on your wrapper or on the built-in stand-in ([results.md](results.md)) |
 
 The run file names a method by its name only, so a method with its own settings (`ca.methods.SPEX(degree=3)`) needs Python.
+
+## 9. Every name, at a glance
+
+Each call with all its arguments and their defaults. The last column says where it is explained.
+
+| Call | What it does | More |
+|---|---|---|
+| `ca.Prompt(id, messages=None, text=None, reference=None, responses=())` | a prompt with its units marked | §2 |
+| `ca.Unit(id, text, sep="", tag=None, replace=None)` | a part of the prompt that may be removed | §2 |
+| `ca.Response(id, text, label=None, span=None)` | an answer to explain | §2, §4 |
+| `ca.split(text, by="sentence", id=..., sep="", tag=None, replace=None)` | cuts a text into units | §2 |
+| `ca.read_prompts(path)`, `ca.write_prompts(prompts, path)` | read and write a `prompts.jsonl` file | §2 |
+| `ca.explain(prompt, model, target, method="contextcite", budget=64, test_masks=128, seed=0, replace=None, noise_repeats=3, removal=(), cache=None, batch_size=32)` | explains one prompt and returns a `ca.Explanation` | [methods.md](methods.md) §4 |
+| `ca.explain(prompt, value=f, name=...)` | the same for any function `f` of masked prompts, in place of a model and a target | [methods.md](methods.md) §4 |
+| `ca.attribute(f, n, method="contextcite", budget=64, test_masks=128, seed=0, unit_ids=None, removal=())` | explains any function of masks | [methods.md](methods.md) §4 |
+| `ca.Explanation` | one result: its scores, R², noise and the rest | [results.md](results.md) §6 |
+| `ca.LogProb(response=None, reduce="mean")`, `ca.Pooled(label="negative", reduce="mean")`, `ca.Contrast(reduce="mean")`, `ca.Choice(a, b)`, `ca.Sampled(check, samples=4, sampling=None)` | the targets: what is explained | §5 |
+| `ca.methods.LeaveOneOut()`, `Banzhaf()`, `ContextCite(alpha, standardize)`, `LIME(kernel_width, alpha)`, `KernelSHAP(paired)`, `FaithBanzhaf(max_order, ridge)`, `FaithShap(max_order)`, `SPEX(degree, chase_depth)`, `ProxySPEX(max_order, hpo)` | a method with its own settings, for `method=` | [methods.md](methods.md) §5 |
+| `ca.sample(prompt, model, sampling, check=None, cache=None, replace=None)` | adds the model's own replies to a prompt's responses, labelled by the check | §4 |
+| `ca.checks.regex(pattern, negative=True)`, `ca.checks.reference(contains=True)`, `ca.Verdict(label=None, score=None, span=None)` | checks, and what a check of your own may return | §4 |
+| `ca.intervene(prompt, model, check, drop, samples=64, sampling=None, replace=None, cache=None)` | removes the units named in `drop` (one unit id or a list), lets the model answer `samples` times with and without them, and returns a `dict` with `before`, `after`, `change` and `se` | [results.md](results.md) §7 |
+| `ca.Value(prompt, model, target, replace=None, cache=None, batch_size=32)` | the model's number for any choice of units: `value([[1, 0, 1]])` gives one number for each mask, and `value.noise(repeats=3)` the noise | [results.md](results.md) §8 |
+| `ca.Run(model, prompts, target=None, sample=None, check=None, method="contextcite", budget=64, test_masks=128, seed=0, replace=None, batch_size=32, noise_repeats=3, removal=())` | many prompts with one setup: `run.plan(measure=0)`, `run.execute(folder)` | §8 |
+| `ca.Results.load(folder)` | the results of a run: `results.explanations`, `results.summary(by="tag", top=3)`, `results.to_html(path)` | §8 |
+| `ca.check_model(model, prompt=None, response=None)` | tests a wrapper, on a built-in prompt and response unless you give your own. Returns a `ca.ModelReport`: print it, or read `report.ok`, `report.scores`, `report.generates` and `report.targets` | [wrapper.md](wrapper.md) §3 |
+| `ca.demo(model=None, cache=None, interactions=None, show=print)` | explains three cases with known answers, on your wrapper or on the stand-in. `interactions=False` leaves out the four methods that need the extra, and `show` receives each line. Returns `True` when every check of the package passed | [wrapper.md](wrapper.md) §5 |
+| `ca.Sampling(n=1, temperature=0.0, top_p=1.0, max_tokens=256, seed=0, stop=())`, `ca.Scored(logprobs, tokens=None)` | what a wrapper's `generate` gets, and what its `score` returns | [wrapper.md](wrapper.md) §1 |
+| `ca.Cache(path)` | the store of the model's answers. `cache=` takes a path or a `ca.Cache` | [methods.md](methods.md) §4 |
+| `ca.ToyModel.demo()`, `ca.ToyModel(rules, pairs=None, bias=0.0, replies=None, default_reply="I do not know.", name="toy")` | the stand-in with fixed rules, and how to build one with rules of your own | §3 |
+| `ca.faithfulness(predicted, values)` | R² of predictions against values | [methods.md](methods.md) §2 |
+| `ca.Group`, `ca.Message` | what `ca.split` and chat messages become inside a `ca.Prompt`. You rarely build them yourself | §2 |
+| `ca.WrapperError` | the error raised when a wrapper returns the wrong shape | [wrapper.md](wrapper.md) §3 |
+

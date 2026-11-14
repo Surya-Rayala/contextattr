@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextattr"
-version = "0.2.0"
+version = "0.2.1"
 description = "Context attribution: which parts of a prompt make a model give an output, for a model hosted anywhere"
 readme = "README.md"
 license = "MIT"
